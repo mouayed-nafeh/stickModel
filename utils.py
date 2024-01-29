@@ -59,10 +59,16 @@ def duplicate_for_drift(drift_values,control_nodes):
 
 def createPinching4(matTag, F,D):
     # import necessary libraries
-    import openseesy.opensees as ops
+    import openseespy.opensees as ops
     
-    ePf1   = F[0];   ePf2 = F[1];   ePf3 = F[2], ePf4 = F[3]
-    ePd1   = D[0];   ePd2 = D[1];   ePd3 = D[2], ePd4 = D[3]
+    ePf1   = F[0]
+    ePf2   = F[1]
+    ePf3   = F[2]
+    ePf4   = F[2]
+    ePd1   = D[0]
+    ePd2   = D[1]
+    ePd3   = D[2]
+    ePd4   = D[2]+0.02
     rDispP = 0.8; rForceP = 0.8; uForceP = 0.8;
     gK1    = 1.0;     gK2 = 0.2;     gK3 = 0.3;   gK4 = 0.2; gKLim = 0.9;
     gD1    = 0.5;     gD2 = 0.5;     gD3 = 2.0;   gD4 = 2.0; gDLim = 0.5;

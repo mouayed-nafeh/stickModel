@@ -12,6 +12,7 @@ import numpy as np
 import os
 from mdof_units import g
 from utils import *           
+import matplotlib.pyplot as plt
 
 class stickModel():
 
@@ -33,7 +34,7 @@ class stickModel():
             raise ValueError('Number of entries exceed the number of storeys')
         
         self.nst = nst; self.flh = flh; self.flm = flm; self.fll = fll; self.fla = fla
-        self.structTypo = structTypo
+        self.structTypo = structTypo; self.gitDir = gitDir
         
     def mdof_initialise(self):
         """
@@ -128,11 +129,11 @@ class stickModel():
         ops.timeSeries('Linear', 101)
         ops.pattern('Plain',101,101)
         # load the nodes
-        for i in nodeList:
+        for i, node in enumerate(nodeList):
             if i==0:
                 pass
             else:
-                ops.load(i,0.0,0.0,-massFl[i], 0.0, 0.0, 0.0)
+                ops.load(node,0.0,0.0,-massFl[i-1], 0.0, 0.0, 0.0)
 
     def mdof_material(self):
         """
@@ -161,11 +162,14 @@ class stickModel():
         nodeList = ops.getNodeTags()
         numEle = len(nodeList)-1
         
-        for i in self.nst:
+        # initialise some element params
+        dirs = [1,2,3,4,5,6]
+        
+        for i in range(self.nst):
             
             # define the material tag associated with each storey
-            mat1Tag = int(f'{i}00')
-            mat2Tag = int(f'{i}01')
+            mat1Tag = int(f'1{i}00')
+            mat2Tag = int(f'1{i}01')
             
             # get the backbone curve definition
             D = list(pd.read_csv(f'{self.gitDir}/{self.structTypo}.csv').iloc[:,0])
@@ -184,17 +188,18 @@ class stickModel():
             # aggregate all material tags in one
             matTags = [mat2Tag, mat2Tag, rigM, rigM, rigM, rigM]            
 
-
             # define the connectivity parameters
-            eleTag = int(f'{i}02')
+            eleTag = int(f'200{i}')
             eleNodes = [i, i+1]
-                
+            
+            print(eleTag)
+            print(eleNodes)
+            print(matTags)
             # create the element
-            ops.element('zeroLength', eleTag, *eleNodes, '-mat', *matTags, '-dir', [1,2,3,4,5,6])
-            i=i+1
+            #ops.element('zeroLength', eleTag, eleNodes, '-mat', matTags, '-dir', *dirs)
+            ops.element('zeroLength', eleTag, eleNodes[0], eleNodes[1], '-mat', mat2Tag, mat2Tag, rigM, rigM, rigM, rigM, '-dir', 1, 2, 3, 4, 5, 6, '-doRayleigh', 1)
 
-        
-        
+
 ##########################################################################
 #                             ANALYSIS MODULES                           #
 ##########################################################################
@@ -225,7 +230,7 @@ class stickModel():
         else:
             pass
             
-    def do_spo_analysis(ref_disp, disp_scale_factor, push_dir, pflag=False, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, algorithm_type='KrylovNewton'):
+    def do_spo_analysis(self, ref_disp, disp_scale_factor, push_dir, pflag=False, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, algorithm_type='KrylovNewton'):
                 
         # apply the load pattern
         ops.timeSeries("Linear", 1) # create timeSeries
@@ -255,7 +260,7 @@ class stickModel():
         ops.algorithm(algorithm_type)
         
         # Set the integrator
-        target_disp = ref_disp*disp_scale_factor
+        target_disp = float(ref_disp)*float(disp_scale_factor)
         delta_disp = target_disp/(1.0*num_steps)
         ops.integrator('DisplacementControl', control_node, push_dir, delta_disp)
         ops.analysis('Static')
@@ -597,9 +602,10 @@ class stickModel():
 #                             MODEL COMPILATION                          #
 ##########################################################################
     
-    def compileModel(self):
+    def compileModel():
         
-        model = stickModel(self.path_to_input_file)
+        #model = stickModel(nst, flh, flm, fla, structTypo, gitDir)
+        model = stickModel(self)
         model.mdof_initialise()
         model.mdof_nodes()
         model.mdof_fixity()
