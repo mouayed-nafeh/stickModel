@@ -117,8 +117,12 @@ def do_spo_analysis(ref_disp, disp_scale_factor, push_dir, pflag=False, num_step
     step = 1
     loadf = 1.0
     
+    # Recording base shear
     spo_rxn = np.array([0.])
-    spo_disp = np.array([0.])
+    # Recording top displacement
+    spo_top_disp = np.array([ops.nodeResponse(control_node, push_dir,1)])
+    # Recording all displacements to estimate drifts
+    spo_disps = np.array([[ops.nodeResponse(node, push_dir, 1) for node in pattern_nodes]])
     
     while step <= num_steps and ok == 0 and loadf > 0:
         
@@ -169,8 +173,13 @@ def do_spo_analysis(ref_disp, disp_scale_factor, push_dir, pflag=False, num_step
         step += 1
         
         # Get the results
-        spo_disp = np.append(spo_disp, ops.nodeDisp(control_node, push_dir))
-        
+        spo_top_disp = np.append(spo_top_disp, ops.nodeResponse(
+        control_node, push_dir, 1))
+
+        spo_disps = np.append(spo_disps, np.array([
+        [ops.nodeResponse(node, push_dir, 1) for node in pattern_nodes]
+        ]), axis=0)
+
         ops.reactions()
         temp = 0
         for n in rxn_nodes:
@@ -187,7 +196,7 @@ def do_spo_analysis(ref_disp, disp_scale_factor, push_dir, pflag=False, num_step
     if loadf < 0:
         print('Stopped because of load factor below zero')
         
-    return spo_disp, spo_rxn
+    return spo_top_disp, spo_disps, spo_rxn
 
 def do_nrha_analysis(fnames, dt_gm, sf, t_max, dt_ansys, drift_limit, control_nodes, pflag=False, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, algorithm_type='KrylovNewton'):
     """

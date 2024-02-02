@@ -57,33 +57,23 @@ def duplicate_for_drift(drift_values,control_nodes):
         
     return newDrft, newNodes
 
-def createPinching4(matTag, F,D):
+
+def createHystereticMaterial(matTag, F, D):
     # import necessary libraries
     import openseespy.opensees as ops
     
-    ePf1   = F[0]
-    ePf2   = F[1]
-    ePf3   = F[2]
-    ePf4   = F[2]
-    ePd1   = D[0]
-    ePd2   = D[1]
-    ePd3   = D[2]
-    ePd4   = D[2]+0.02
-    rDispP = 0.8; rForceP = 0.8; uForceP = 0.8;
-    gK1    = 1.0;     gK2 = 0.2;     gK3 = 0.3;   gK4 = 0.2; gKLim = 0.9;
-    gD1    = 0.5;     gD2 = 0.5;     gD3 = 2.0;   gD4 = 2.0; gDLim = 0.5;
-    gF1    = 1.0;     gF2 = 0.0;     gF3 = 1.0;   gF4 = 1.0; gFLim = 0.9;
-    gE     = 10.0;    dmgType = 'cycle'
+    pinchX = 1.0
+    pinchY = 1.0
+    damageX = 1.0
+    damageY = 1.0
     
-    
-    ops.uniaxialMaterial('Pinching4', matTag, 
-                         ePf1, ePd1, ePf2, ePd2, 
-                         ePf3, ePd3, ePf4, ePd4, 
-                         rDispP, rForceP, uForceP,
-                         gK1, gK2, gK3, gK4, gKLim, 
-                         gD1, gD2, gD3, gD4, gDLim, 
-                         gF1, gF2, gF3, gF4, gFLim, 
-                         gE, dmgType)
-    
-    
-    
+    if len(F)==2 and len(D)==2:
+        # assign bilinear material
+        ops.uniaxialMaterial('HystereticSM', matTag, '-posEnv', F[0], D[0], F[1], D[1], '-negEnv', -F[0], -D[0], -F[1], -D[1], '-pinch', pinchX, pinchY,'-damage', damageX, damageY, '-beta', 0)
+    elif len(F)==3 and len(D)==3:
+        # assign bilinear material
+        ops.uniaxialMaterial('HystereticSM', matTag, '-posEnv', F[0], D[0], F[1], D[1], F[2], D[2], '-negEnv', -F[0], -D[0], -F[1], -D[1], -F[2], -D[2], '-pinch', pinchX, pinchY,'-damage', damageX, damageY, '-beta', 0)
+    elif len(F)==4 and len(D)==4:
+        # assign bilinear material
+        ops.uniaxialMaterial('HystereticSM', matTag, '-posEnv', F[0], D[0], F[1], D[1], F[2], D[2], F[3], D[3],'-negEnv', -F[0], -D[0], -F[1], -D[1], -F[2], -D[2], -F[3], -D[3], '-pinch', pinchX, pinchY,'-damage', damageX, damageY, '-beta', 0)
+        

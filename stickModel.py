@@ -4,6 +4,12 @@ Created on Tue Jan 16 10:26:11 2024
 
 @author: Moayad
 """
+## TODO
+
+# [] Include a cyclic pushover analysis module
+# [] Include a model plotter and a visualisation module for analysis results (e.g., seismic demands, )
+# [] Include dynamic paths to ground-motion files to run batch cloud analysis
+# [] Implement Luis' calibrated capacity curves
 
 ## load dependencies
 import openseespy.opensees as ops
@@ -13,6 +19,7 @@ import os
 from mdof_units import g
 from utils import *           
 import matplotlib.pyplot as plt
+import itertools
 
 class stickModel():
 
@@ -180,9 +187,7 @@ class stickModel():
             ops.uniaxialMaterial('Elastic', rigM, 1e6)
     
             # create the material
-            createPinching4(mat1Tag, F,D)
-            
-            # create a min-max material to define ultimate displacement and overlay it to the previous material
+            createHystereticMaterial(mat1Tag, F, D)
             ops.uniaxialMaterial('MinMax', mat2Tag, mat1Tag, '-min', -D[-1], '-max', D[-1])
             
             # aggregate all material tags in one
@@ -192,9 +197,6 @@ class stickModel():
             eleTag = int(f'200{i}')
             eleNodes = [i, i+1]
             
-            print(eleTag)
-            print(eleNodes)
-            print(matTags)
             # create the element
             #ops.element('zeroLength', eleTag, eleNodes, '-mat', matTags, '-dir', *dirs)
             ops.element('zeroLength', eleTag, eleNodes[0], eleNodes[1], '-mat', mat2Tag, mat2Tag, rigM, rigM, rigM, rigM, '-dir', 1, 2, 3, 4, 5, 6, '-doRayleigh', 1)
@@ -230,7 +232,7 @@ class stickModel():
         else:
             pass
             
-    def do_spo_analysis(self, ref_disp, disp_scale_factor, push_dir, pflag=False, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, algorithm_type='KrylovNewton'):
+    def do_spo_analysis(self, ref_disp, disp_scale_factor, push_dir, pflag=True, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, algorithm_type='KrylovNewton'):
                 
         # apply the load pattern
         ops.timeSeries("Linear", 1) # create timeSeries
@@ -267,15 +269,18 @@ class stickModel():
         
         # Give some feedback if requested
         if pflag is True:
-            print('Pushover analysis of node ' + str(control_node) + ' to ' + str(target_disp))
-    
+            print(f"\n------ Static Pushover Analysis of Node # {control_node} to {target_disp} ---------")
         # Set up the analysis
         ok = 0
         step = 1
         loadf = 1.0
         
+        # Recording base shear
         spo_rxn = np.array([0.])
-        spo_disp = np.array([0.])
+        # Recording top displacement
+        spo_top_disp = np.array([ops.nodeResponse(control_node, push_dir,1)])
+        # Recording all displacements to estimate drifts
+        spo_disps = np.array([[ops.nodeResponse(node, push_dir, 1) for node in pattern_nodes]])
         
         while step <= num_steps and ok == 0 and loadf > 0:
             
@@ -326,8 +331,13 @@ class stickModel():
             step += 1
             
             # Get the results
-            spo_disp = np.append(spo_disp, ops.nodeDisp(control_node, push_dir))
-            
+            spo_top_disp = np.append(spo_top_disp, ops.nodeResponse(
+            control_node, push_dir, 1))
+    
+            spo_disps = np.append(spo_disps, np.array([
+            [ops.nodeResponse(node, push_dir, 1) for node in pattern_nodes]
+            ]), axis=0)
+                
             ops.reactions()
             temp = 0
             for n in rxn_nodes:
@@ -339,15 +349,152 @@ class stickModel():
         if ok != 0:
             print('------ ANALYSIS FAILED --------')
         elif ok == 0:
-            print('~~~~~~~ ANALYSIS SUCCESSFUL ~~~~~~~~~')
-        
+            print('~~~~~~~ ANALYSIS SUCCESSFUL ~~~~~~~~~')        
         if loadf < 0:
             print('Stopped because of load factor below zero')
+         
+        ops.wipeAnalysis()
+        
+        if pflag is True:
             
-        return spo_disp, spo_rxn
+            plt.plot(spo_top_disp, spo_rxn, color = 'blue',linestyle='solid')
+            plt.xlabel("Top Displacement, $\delta$ [m]")
+            plt.ylabel("Base Shear, V [kN]")
+            plt.grid(visible=True, which='major')
+            plt.grid(visible=True, which='minor')
+            plt.xlim([0,np.max(spo_top_disp)+1])
+            plt.ylim([0,np.max(spo_rxn)+1])
+            plt.show()
+        
+        
+        return spo_disps, spo_rxn
+    
+    def do_cpo_analysis(self, ref_disp, mu, numCycles, push_dir, dispIncr, pflag=True, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='NormDispIncr', init_tol=1.0e-5, init_iter=1000, algorithm_type='KrylovNewton'):
+        
+        # apply the load pattern
+        ops.timeSeries("Linear", 1) # create timeSeries
+        ops.pattern("Plain",1,1) # create a plain load pattern
+                
+        # define control nodes
+        nodeList = ops.getNodeTags()
+        control_node = nodeList[-1]
+        pattern_nodes = nodeList[1:]
+        rxn_nodes = [nodeList[0]]
+        
+        # we can integrate modal patterns, inverse triangular, etc.
+        for i in np.arange(len(pattern_nodes)):
+            if push_dir == 1:
+                ops.load(pattern_nodes[i], nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0, 0.0, 0.0)
+            elif push_dir == 2:
+                ops.load(pattern_nodes[i], 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0, 0.0)
+            elif push_dir == 3:
+                ops.load(pattern_nodes[i], 0.0, 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0)
+        
+        # Set up the initial objects
+        ops.system(ansys_soe)
+        ops.constraints(constraints_handler)
+        ops.numberer(numberer)
+        ops.test(test_type, init_tol, init_iter)        
+        ops.algorithm(algorithm_type)
 
-    def do_nrha_analysis(fnames, dt_gm, sf, t_max, dt_ansys, drift_limit, 
-                         control_nodes, pflag=False, ansys_soe='BandGeneral', 
+     	#create the list of displacements
+        dispList =                  [ref_disp*mu, -2.0*ref_disp*mu, ref_disp*mu]
+        cycleDispList = (numCycles* [ref_disp*mu, -2.0*ref_disp*mu, ref_disp*mu])
+        dispNoMax = len(cycleDispList)
+        
+        # Give some feedback if requested
+        if pflag is True:
+            print(f"\n------ Cyclic Pushover Analysis of Node # {control_node} for {numCycles} cycles to ductility: {mu}---------")
+        
+        # Recording base shear
+        cpo_rxn = np.array([0.])
+        # Recording top displacement
+        cpo_top_disp = np.array([ops.nodeResponse(control_node, push_dir,1)])
+        # Recording all displacements to estimate drifts
+        cpo_disps = np.array([[ops.nodeResponse(node, push_dir, 1) for node in pattern_nodes]])
+
+    
+        for d in range(dispNoMax):
+            numIncr = dispIncr
+            dU = cycleDispList[d]/(1.0*numIncr)
+            ops.integrator('DisplacementControl', control_node, push_dir, dU)
+            ops.analysis('Static')
+            
+            for l in range(numIncr):
+                ok = ops.analyze(1)
+                
+                # If the analysis fails, try the following changes to achieve convergence
+                if ok != 0:
+                    print('FAILED: Trying relaxing convergence...')
+                    ops.test(test_type, init_tol*0.01, init_iter)
+                    ok = ops.analyze(1)
+                    ops.test(test_type, init_tol, init_iter)
+                if ok != 0:
+                    print('FAILED: Trying relaxing convergence with more iterations...')
+                    ops.test(test_type, init_tol*0.01, init_iter*10)
+                    ok = ops.analyze(1)
+                    ops.test(test_type, init_tol, init_iter)
+                if ok != 0:
+                    print('FAILED: Trying relaxing convergence with more iteration and Newton with initial then current...')
+                    ops.test(test_type, init_tol*0.01, init_iter*10)
+                    ops.algorithm('Newton', 'initialThenCurrent')
+                    ok = ops.analyze(1)
+                    ops.test(test_type, init_tol, init_iter)
+                    ops.algorithm(algorithm_type)
+                if ok != 0:
+                    print('FAILED: Trying relaxing convergence with more iteration and Newton with initial...')
+                    ops.test(test_type, init_tol*0.01, init_iter*10)
+                    ops.algorithm('Newton', 'initial')
+                    ok = ops.analyze(1)
+                    ops.test(test_type, init_tol, init_iter)
+                    ops.algorithm(algorithm_type)
+                if ok != 0:
+                    print('FAILED: Attempting a Hail Mary...')
+                    ops.test('FixedNumIter', init_tol*0.01, init_iter*10)
+                    ok = ops.analyze(1)
+                    ops.test(test_type, init_tol, init_iter)
+                if ok != 0:
+                    print('Analysis Failed')
+                    break 
+                                
+            # Give some feedback if requested
+            if pflag is True:
+                curr_disp = ops.nodeDisp(control_node, push_dir)
+                print('Currently pushed node ' + str(control_node) + ' to ' + str(curr_disp))
+                            
+            # Get the results
+            cpo_top_disp = np.append(cpo_top_disp, ops.nodeResponse(
+            control_node, push_dir, 1))
+    
+            cpo_disps = np.append(cpo_disps, np.array([
+            [ops.nodeResponse(node, push_dir, 1) for node in pattern_nodes]
+            ]), axis=0)
+                
+            ops.reactions()
+            temp = 0
+            for n in rxn_nodes:
+                temp += ops.nodeReaction(n, push_dir)
+            cpo_rxn = np.append(cpo_rxn, -temp)
+                                
+        if pflag is True:
+            
+            plt.plot(cpo_top_disp, cpo_rxn, color = 'blue',linestyle='dashed')
+            plt.xlabel("Top Displacement, $\delta$ [m]")
+            plt.ylabel("Base Shear, V [kN]")
+            plt.grid(visible=True, which='major')
+            plt.grid(visible=True, which='minor')
+            plt.xlim([-1,1])
+            plt.ylim([-np.max(cpo_rxn)-1,np.max(cpo_rxn)+1])
+            plt.show()
+       
+        print(dispList)
+        print(cycleDispList)
+        print(dispNoMax)
+        return cpo_disps, cpo_rxn
+
+                    
+    def do_nrha_analysis(self, fnames, dt_gm, sf, t_max, dt_ansys, drift_limit, 
+                         pflag=False, ansys_soe='BandGeneral', 
                          constraints_handler='Transformation', numberer='RCM', 
                          test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, 
                          algorithm_type='KrylovNewton'):
@@ -415,9 +562,7 @@ class stickModel():
     
         """
         # define control nodes
-        #nodeList = ops.getNodeTags()
-        #control_nodes = nodeList[-1]
-        
+        control_nodes = ops.getNodeTags()
         
         # Define the timeseries and patterns first
         if len(fnames) > 0:
@@ -592,26 +737,69 @@ class stickModel():
             print('Maximum peak floor acceleration {:.3f} g at floor {:d} in the {:s} direction (Floors = 0(G), 1, 2, 3,...)'.format(max_peak_accel, max_peak_accel_loc, max_peak_accel_dir))
                 
         # Give the outputs
-        return coll_index, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp
+        return control_nodes, coll_index, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp
+      
+##########################################################################
+#                             FRAGILITY MODULES                          #
+##########################################################################
+
+#    def do_fragility_analysis(self, thresholds):
         
-##########################################################################
-#                        PARALLEL PROCESSING MODULES                     #
-##########################################################################
+        
 
 ##########################################################################
 #                             MODEL COMPILATION                          #
 ##########################################################################
+
+##########################################################################
+#                        VISUALISATION MODULES                           #
+##########################################################################
+    def plot_model(self, display_info=True):
     
-    def compileModel():
+    
+        modelLineColor = 'blue'
+        modellinewidth = 1
+        Vert = 'Z'
+               
+        # get list of model nodes
+        NodeCoordListX = []; NodeCoordListY = []; NodeCoordListZ = [];
+        NodeMassList = []
         
-        #model = stickModel(nst, flh, flm, fla, structTypo, gitDir)
-        model = stickModel(self)
-        model.mdof_initialise()
-        model.mdof_nodes()
-        model.mdof_fixity()
-        model.mdof_loads()
-        model.mdof_material()
-        model.do_gravity_analysis()
-        model.do_modal_analysis()
+        nodeList = ops.getNodeTags()
+        for thisNodeTag in nodeList:
+            NodeCoordListX.append(ops.nodeCoord(thisNodeTag,1))
+            NodeCoordListY.append(ops.nodeCoord(thisNodeTag,2))
+            NodeCoordListZ.append(ops.nodeCoord(thisNodeTag,3))
+            NodeMassList.append(ops.nodeMass(thisNodeTag,1))
         
-        return model
+        # get list of model elements
+        elementList = ops.getEleTags()
+        for thisEleTag in elementList:
+            eleNodesList = ops.eleNodes(thisEleTag)
+            if len(eleNodesList)==2:
+                [NodeItag,NodeJtag] = eleNodesList
+                NodeCoordListI=ops.nodeCoord(NodeItag)
+                NodeCoordListJ=ops.nodeCoord(NodeJtag)
+                [NodeIxcoord,NodeIycoord,NodeIzcoord]=NodeCoordListI
+                [NodeJxcoord,NodeJycoord,NodeJzcoord]=NodeCoordListJ
+    
+        
+        fig = plt.figure(figsize=(12,12))
+        ax = fig.add_subplot(projection='3d')
+        
+        for i in range(len(nodeList)):
+            ax.scatter(NodeCoordListX[i],NodeCoordListY[i],NodeCoordListZ[i],s=50,color='black')
+            if display_info == True:
+                ax.text(NodeCoordListX[i],NodeCoordListY[i],NodeCoordListZ[i],  'Node#:%s (%s,%s,%s)' % (str(i),str(NodeCoordListX[i]),str(NodeCoordListY[i]),str(NodeCoordListZ[i])), size=20, zorder=1, color='black') 
+        
+        i = 0
+        while i < len(elementList):
+            
+            x = [NodeCoordListX[i], NodeCoordListX[i+1]]
+            y = [NodeCoordListY[i], NodeCoordListY[i+1]]
+            z = [NodeCoordListZ[i], NodeCoordListZ[i+1]]
+            
+            plt.plot(x,y,z,color='blue')
+            i = i+1
+        
+        plt.show()
