@@ -38,8 +38,8 @@ if len(flh)!=nst or len(flm)!=nst or len(fll)!=nst or len(fla)!=nst:
     raise ValueError('Number of entries exceed the number of storeys')
 
 
-#structTypo = 'CR_LFINF+CDH+DUL_H1'
-structTypo = 'S_LFM+CDM+DUM_H6'
+structTypo = 'CR_LFINF+CDH+DUL_H1'
+#structTypo = 'S_LFM+CDM+DUM_H6'
 #structTypo = 'S_LWAL+CDH+DUH_H11'
 
 gitDir = 'C:/Users/Moayad/Documents/GitHub/stickModel/raw/ip'
@@ -51,67 +51,66 @@ F = list(pd.read_csv(f'{gitDir}/{structTypo}.csv').iloc[:,1])
 
 #%% Test static pushover analysis
 
-ref_disp = 0.5
-disp_scale_factor = 10
-push_dir = 1
+# ref_disp = 0.1
+# disp_scale_factor = 10
+# push_dir = 1
 
-model = stickModel(nst,flh,flm,fll,fla,structTypo,gitDir)
-model.mdof_initialise()
-model.mdof_nodes()
-model.mdof_fixity()
-model.mdof_loads()
-model.mdof_material()
-model.do_gravity_analysis()
-ops.wipeAnalysis()
-model.do_modal_analysis()
-ops.wipeAnalysis()
+# model = stickModel(nst,flh,flm,fll,fla,structTypo,gitDir)
+# model.mdof_initialise()
+# model.mdof_nodes()
+# model.mdof_fixity()
+# model.mdof_loads()
+# model.mdof_material()
+# model.do_gravity_analysis()
+# ops.wipeAnalysis()
+# model.do_modal_analysis()
+# ops.wipeAnalysis()
 
-spo_disps, spo_rxn = model.do_spo_analysis(ref_disp, disp_scale_factor, push_dir, pflag=False)
-ops.wipe()
+# spo_disps, spo_rxn = model.do_spo_analysis(ref_disp, disp_scale_factor, push_dir, pflag=True)
+# ops.wipe()
  
+# #%% Test cyclic pushover analysis
 
-#%% Test cyclic pushover analysis
+# ref_disp = 0.005
+# numCycles = 1000
+# push_dir = 2
+# dispIncr = 200
+# mu_list = [10]
 
-ref_disp = 0.005
-numCycles = 1000
-push_dir = 2
-dispIncr = 200
-mu_list = [10]
+# for i in range(len(mu_list)):
 
-for i in range(len(mu_list)):
-
-    model = stickModel(nst,flh,flm,fll,fla,structTypo,gitDir)
-    model.mdof_initialise()
-    model.mdof_nodes()
-    model.mdof_fixity()
-    model.mdof_loads()
-    model.mdof_material()
-    model.plot_model()
-    model.do_gravity_analysis()
-    ops.wipeAnalysis()
-    model.do_modal_analysis()
-    ops.wipeAnalysis()
+#     model = stickModel(nst,flh,flm,fll,fla,structTypo,gitDir)
+#     model.mdof_initialise()
+#     model.mdof_nodes()
+#     model.mdof_fixity()
+#     model.mdof_loads()
+#     model.mdof_material()
+#     model.plot_model()
+#     model.do_gravity_analysis()
+#     ops.wipeAnalysis()
+#     model.do_modal_analysis()
+#     ops.wipeAnalysis()
     
-    cpo_disps, cpo_rxn = model.do_cpo_analysis(ref_disp, mu_list[i], numCycles, push_dir, dispIncr, pflag = False)
+#     cpo_disps, cpo_rxn = model.do_cpo_analysis(ref_disp, mu_list[i], numCycles, push_dir, dispIncr, pflag = False)
     
-    plt.plot(spo_disps[:,nst-1], spo_rxn, color = 'black',linestyle='solid')
-    plt.plot(-spo_disps[:,nst-1], -spo_rxn, color = 'black',linestyle='solid')
-    plt.plot(cpo_disps[:,nst-1], cpo_rxn, color = 'blue',linestyle='dashed')
-    plt.xlabel("Top Displacement, $\delta$ [m]")
-    plt.ylabel("Base Shear, V [kN]")
-    plt.grid(visible=True, which='major')
-    plt.grid(visible=True, which='minor')
-    plt.xlim([-1,1])
+#     plt.plot(spo_disps[:,nst-1], spo_rxn, color = 'black',linestyle='solid')
+#     plt.plot(-spo_disps[:,nst-1], -spo_rxn, color = 'black',linestyle='solid')
+#     plt.plot(cpo_disps[:,nst-1], cpo_rxn, color = 'blue',linestyle='dashed')
+#     plt.xlabel("Top Displacement, $\delta$ [m]")
+#     plt.ylabel("Base Shear, V [kN]")
+#     plt.grid(visible=True, which='major')
+#     plt.grid(visible=True, which='minor')
+#     plt.xlim([-0.2,0.2])
 
 
 #%% Test NLTHA
 
-dt_gm = 0.01; 
-t_max = [300.00, 300.00] ; 
-dt_ansys = 0.05; 
+dt_gm = 0.01 
+t_max = 300.00 
+dt_ansys = 0.05 
 sf = 1.00
 test_directory = 'C:/Users/Moayad/Desktop/python/stick-model/test'
-fnames = [f'{test_directory}/record.txt', f'{test_directory}/record.txt']
+fnames = f'{test_directory}/record.txt'
 
 model = stickModel(nst,flh,flm,fll,fla,structTypo,gitDir)
 model.mdof_initialise()
@@ -122,9 +121,6 @@ model.mdof_material()
 model.plot_model()
 model.do_gravity_analysis()
 model.do_modal_analysis()
-ops.wipeAnalysis()
-
-
 control_nodes, coll_index, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp = model.do_nrha_analysis(fnames, dt_gm, sf, t_max, dt_ansys, 5)
     
 

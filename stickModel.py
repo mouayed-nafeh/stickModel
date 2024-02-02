@@ -352,21 +352,7 @@ class stickModel():
             print('~~~~~~~ ANALYSIS SUCCESSFUL ~~~~~~~~~')        
         if loadf < 0:
             print('Stopped because of load factor below zero')
-         
-        ops.wipeAnalysis()
-        
-        if pflag is True:
-            
-            plt.plot(spo_top_disp, spo_rxn, color = 'blue',linestyle='solid')
-            plt.xlabel("Top Displacement, $\delta$ [m]")
-            plt.ylabel("Base Shear, V [kN]")
-            plt.grid(visible=True, which='major')
-            plt.grid(visible=True, which='minor')
-            plt.xlim([0,np.max(spo_top_disp)+1])
-            plt.ylim([0,np.max(spo_rxn)+1])
-            plt.show()
-        
-        
+                         
         return spo_disps, spo_rxn
     
     def do_cpo_analysis(self, ref_disp, mu, numCycles, push_dir, dispIncr, pflag=True, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='NormDispIncr', init_tol=1.0e-5, init_iter=1000, algorithm_type='KrylovNewton'):
@@ -476,20 +462,6 @@ class stickModel():
                 temp += ops.nodeReaction(n, push_dir)
             cpo_rxn = np.append(cpo_rxn, -temp)
                                 
-        if pflag is True:
-            
-            plt.plot(cpo_top_disp, cpo_rxn, color = 'blue',linestyle='dashed')
-            plt.xlabel("Top Displacement, $\delta$ [m]")
-            plt.ylabel("Base Shear, V [kN]")
-            plt.grid(visible=True, which='major')
-            plt.grid(visible=True, which='minor')
-            plt.xlim([-1,1])
-            plt.ylim([-np.max(cpo_rxn)-1,np.max(cpo_rxn)+1])
-            plt.show()
-       
-        print(dispList)
-        print(cycleDispList)
-        print(dispNoMax)
         return cpo_disps, cpo_rxn
 
                     
