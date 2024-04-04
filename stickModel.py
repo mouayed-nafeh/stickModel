@@ -1,51 +1,43 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Jan 16 10:26:11 2024
-
-@author: Moayad
-"""
-## TODO
-
-# [] Include a cyclic pushover analysis module
-# [] Include a model plotter and a visualisation module for analysis results (e.g., seismic demands, )
-# [] Include dynamic paths to ground-motion files to run batch cloud analysis
-# [] Implement Luis' calibrated capacity curves
-
-## load dependencies
+##########################################################################
+#                          MDOF MODELLING MODULE                         #
+##########################################################################   
+from utils import *
 import openseespy.opensees as ops
-import pandas as pd
 import numpy as np
 import os
-from mdof_units import g
-from utils import *           
 import matplotlib.pyplot as plt
-import itertools
+import matplotlib.cbook as cbook
+import matplotlib.image as image
+from scipy import stats, optimize
+import piecewise_regression
 
 class stickModel():
 
-    def __init__(self, nst, flh, flm, fll, fla, structTypo, gitDir):
+    def __init__(self, nst, flh, flm, stD, stF, buildingClass):
         """
         Stick Modelling and Processing Tool
-        :param nst:         int                Number of storeys
-        :param flh:        list               List of floor heights in metres (e.g. [2.5, 3.0])
-        :param flm:        list               List of floor masses in tonnes (e.g. [1000, 1200])
-        :param fll:        list               List of floor loads in kN/m2 (e.g. [5.0, 5.0])
-        :param fla:        list               List of floor areas in m2 (e.g. [350, 350])
-        :param structTypo:  str               String from GEM taxonomy (e.g. 'CR_LDUAL+CDH+DUH_H1')
-        :param gitDir:      str               String corresponding to the GitHub file directory
-
+        :param nst:           int                Number of storeys
+        :param flh:           list               List of floor heights in metres (e.g. [2.5, 3.0])
+        :param flm:           list               List of floor masses in tonnes (e.g. [1000, 1200])
+        :param stD:           array              Array of storey displacements (size = nst, CapPoints)
+        :param stF:           array              Array of storey forces (size = nst,CapPoints)
+        :param buildingClass:  str               String from GEM taxonomy (e.g. 'CR_LDUAL+CDH+DUH_H1')
         """
+
+        ### Run tests on input parameters
+        if len(flh)!=nst or len(flm)!=nst:
+            raise ValueError('Number of entries exceed the number of storeys!')
+        
+        self.nst = nst; 
+        self.flh = flh; 
+        self.flm = flm;
+        self.buildingClass = buildingClass;
+        self.stF = stF; 
+        self.stD = stD
                 
-        # run some tests
-        if len(flh)!=nst or len(flm)!=nst or len(fll)!=nst or len(fla)!=nst:
-            raise ValueError('Number of entries exceed the number of storeys')
-        
-        self.nst = nst; self.flh = flh; self.flm = flm; self.fll = fll; self.fla = fla
-        self.structTypo = structTypo; self.gitDir = gitDir
-        
     def mdof_initialise(self):
         """
-        Initialising the definition of an MDOF system
+        Initialises the model builder
 
         Parameters
         ----------
@@ -56,13 +48,13 @@ class stickModel():
         None.
 
         """    
-        # set model builder
+        ### Set model builder
         ops.wipe() # wipe existing model
         ops.model('basic', '-ndm', 3, '-ndf', 6)
         
     def mdof_nodes(self):
         """
-        Initialising the definition of MDOF nodes and their corresponding mass
+        Initialises the MDOF nodes and masses
     
         Parameters
         ----------
@@ -73,12 +65,9 @@ class stickModel():
         None.
     
         """    
-        # wipe everything before initialising model
-        ops.wipe()
-        
-        # define base node (tag = 0)
+        ### Define base node (tag = 0)
         ops.node(0, *[0.0, 0.0, 0.0])
-        # define floor nodes (tag = 1+)
+        ### Define floor nodes (tag = 1+)
         i = 1
         current_height = 0.0
         while i <= self.nst:
@@ -86,14 +75,14 @@ class stickModel():
             current_height = current_height + self.flh[i-1]
             current_mass = self.flm[i-1]
             coords = [0.0, 0.0, current_height]
-            masses = [current_mass, current_mass, current_mass, current_mass, current_mass, current_mass]
+            masses = [current_mass, current_mass, 1e-6, 1e-6, 1e-6, 1e-6]
             ops.node(nodeTag,*coords)
             ops.mass(nodeTag,*masses)
-            i+=+1
+            i+=1
 
     def mdof_fixity(self):
         """
-        Initialising the definition of MDOF nodes' boundary conditions
+        Initialises the nodal fixities
     
         Parameters
         ----------
@@ -104,18 +93,20 @@ class stickModel():
         None.
     
         """    
-        # get list of model nodes
+        ### Get list of model nodes
         nodeList = ops.getNodeTags()
-        # impose boundary conditions
-        for i in nodeList:            
+        ### Impose boundary conditions
+        for i in nodeList:
+            # fix the base node against all DOFs
             if i==0:
                 ops.fix(i,1,1,1,1,1,1)
+            # release the horizontal DOFs (1,2) and fix remaining
             else:
-                ops.fix(i,0,0,1,0,0,0)
+                ops.fix(i,0,0,1,1,1,1)
     
     def mdof_loads(self):
         """
-        Initialising the definition of MDOF loads based on floor mass
+        Initialises the nodal loads
 
         Parameters
         ----------
@@ -126,21 +117,17 @@ class stickModel():
         None.
 
         """        
-        # get corresponding floor mass
-        massFl = []
-        for i in range(self.nst):
-            massFl.append(self.fla[i]*self.fll[i])
-        # get list of model nodes
+        ### Get list of model nodes
         nodeList = ops.getNodeTags()
-        # create a plain load pattern with a linear timeseries
+        ### Create a plain load pattern with a linear timeseries
         ops.timeSeries('Linear', 101)
         ops.pattern('Plain',101,101)
-        # load the nodes
+        ### Assign the loads
         for i, node in enumerate(nodeList):
             if i==0:
                 pass
             else:
-                ops.load(node,0.0,0.0,-massFl[i-1], 0.0, 0.0, 0.0)
+                ops.load(node,0.0,0.0,-self.flm[i-1]*9.81, 0.0, 0.0, 0.0)
 
     def mdof_material(self):
         """
@@ -148,92 +135,227 @@ class stickModel():
     
         Parameters
         ----------
-        eleTag: int
-         element tag
-        matDef: string
-         definition of material backbone. Supported definitions are:
-             'bilinear', 'trilinear', 'quadrilinear'
-        F: list of floats
-         array of strength points
-        D: list of floats
-         array of deformation points
+        None.
         
         Returns
         -------
         None.
     
         """
-        matDir = f'{self.gitDir}/raw/in/'   
         
-        # get number of zerolength elements required
+        ### Get number of zerolength elements required
         nodeList = ops.getNodeTags()
         numEle = len(nodeList)-1
-        
-        # initialise some element params
-        dirs = [1,2,3,4,5,6]
-        
+                        
         for i in range(self.nst):
             
-            # define the material tag associated with each storey
-            mat1Tag = int(f'1{i}00')
-            mat2Tag = int(f'1{i}01')
+            ### define the material tag associated with each storey
+            mat1Tag = int(f'1{i}00') # hystereticSM material tag
+            mat2Tag = int(f'1{i}01') # min-max material tag
             
-            # get the backbone curve definition
-            D = list(pd.read_csv(f'{self.gitDir}/{self.structTypo}.csv').iloc[:,0])
-            F = list(pd.read_csv(f'{self.gitDir}/{self.structTypo}.csv').iloc[:,1])
-    
-            # create rigid elastic materials for the restrained dofs
+            ### get the backbone curve definition
+            D = self.stD[i,:].tolist() # deformation capacity (i.e., storey displacement in m)
+            F = self.stF[i,:].tolist() # strength capacity (i.e., storey base shear in kN)
+                        
+            ### Create rigid elastic materials for the restrained dofs
             rigM = int(f'1{i}02')
             ops.uniaxialMaterial('Elastic', rigM, 1e6)
-    
-            # create the material
+                        
+            ### Create the nonlinear material for the unrestrained dofs
             createHystereticMaterial(mat1Tag, F, D)
             ops.uniaxialMaterial('MinMax', mat2Tag, mat1Tag, '-min', -D[-1], '-max', D[-1])
             
-            # aggregate all material tags in one
+            ### Aggregate materials
             matTags = [mat2Tag, mat2Tag, rigM, rigM, rigM, rigM]            
 
-            # define the connectivity parameters
+            ### Define element connectivity
             eleTag = int(f'200{i}')
             eleNodes = [i, i+1]
             
-            # create the element
-            #ops.element('zeroLength', eleTag, eleNodes, '-mat', matTags, '-dir', *dirs)
+            ### Create the element
             ops.element('zeroLength', eleTag, eleNodes[0], eleNodes[1], '-mat', mat2Tag, mat2Tag, rigM, rigM, rigM, rigM, '-dir', 1, 2, 3, 4, 5, 6, '-doRayleigh', 1)
+
+    def plot_model(self, display_info=True):
+        """
+        Plots the Opensees model
+    
+        Parameters
+        ----------
+        None.
+        
+        Returns
+        -------
+        None.
+    
+        """
+        with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/gem_logo.png') as file:
+            img = image.imread(file)
+
+        modelLineColor = 'blue'
+        modellinewidth = 1
+        Vert = 'Z'
+               
+        # get list of model nodes
+        NodeCoordListX = []; NodeCoordListY = []; NodeCoordListZ = [];
+        NodeMassList = []
+        
+        nodeList = ops.getNodeTags()
+        for thisNodeTag in nodeList:
+            NodeCoordListX.append(ops.nodeCoord(thisNodeTag,1))
+            NodeCoordListY.append(ops.nodeCoord(thisNodeTag,2))
+            NodeCoordListZ.append(ops.nodeCoord(thisNodeTag,3))
+            NodeMassList.append(ops.nodeMass(thisNodeTag,1))
+        
+        # get list of model elements
+        elementList = ops.getEleTags()
+        for thisEleTag in elementList:
+            eleNodesList = ops.eleNodes(thisEleTag)
+            if len(eleNodesList)==2:
+                [NodeItag,NodeJtag] = eleNodesList
+                NodeCoordListI=ops.nodeCoord(NodeItag)
+                NodeCoordListJ=ops.nodeCoord(NodeJtag)
+                [NodeIxcoord,NodeIycoord,NodeIzcoord]=NodeCoordListI
+                [NodeJxcoord,NodeJycoord,NodeJzcoord]=NodeCoordListJ
+        
+        fig = plt.figure(figsize=(12,12))
+        ax = fig.add_subplot(projection='3d')
+        
+        for i in range(len(nodeList)):
+            ax.scatter(NodeCoordListX[i],NodeCoordListY[i],NodeCoordListZ[i],s=50,color='black')
+            if display_info == True:
+                ax.text(NodeCoordListX[i],NodeCoordListY[i],NodeCoordListZ[i],  'Node %s (%s,%s,%s)' % (str(i),str(NodeCoordListX[i]),str(NodeCoordListY[i]),str(NodeCoordListZ[i])), size=20, zorder=1, color='black') 
+        
+        i = 0
+        while i < len(elementList):
+            
+            x = [NodeCoordListX[i], NodeCoordListX[i+1]]
+            y = [NodeCoordListY[i], NodeCoordListY[i+1]]
+            z = [NodeCoordListZ[i], NodeCoordListZ[i+1]]
+            
+            plt.plot(x,y,z,color='blue')
+            i = i+1
+        
+        ax.set_xlabel('X-Direction [m]')
+        ax.set_ylabel('Y-Direction [m]')
+        ax.set_zlabel('Z-Direction [m]')
+        plt.figimage(img, 60, 310, zorder=1, alpha=.7)
+        
+        plt.show()
 
 
 ##########################################################################
 #                             ANALYSIS MODULES                           #
 ##########################################################################
-    def do_gravity_analysis(self, nG=100,system='UmfPack',constraints='Transformation',
-                            numberer='RCM',test='NormDispIncr',tol = 1.0e-6, iters = 500, algorithm='Newton' ,
-                            integrator='LoadControl',analysis='Static'):        
+    def do_gravity_analysis(self, nG=100,ansys_soe='UmfPack',constraints_handler='Transformation',
+                            numberer='RCM',test_type='NormDispIncr',init_tol = 1.0e-6, init_iter = 500, 
+                            algorithm_type='Newton' , integrator='LoadControl',analysis='Static'):        
+        """
+        Perform gravity analysis on MDOF
+    
+        Parameters
+        ----------
+        nG:                             int                Number of gravity analysis steps to perform.
+        ansys_soe:                   string                System of equations type.
+        constraints_handler:         string                The constraints handler object determines how the constraint equations are enforced in the analysis. Constraint equations enforce a specified value for a DOF, or a relationship between DOFs.
+        numberer:                    string                The DOF numberer object determines the mapping between equation numbers and degrees-of-freedom – how degrees-of-freedom are numbered.
+        test_type:                   string                This command is used to construct the LinearSOE and LinearSolver objects to store and solve the test of equations in the analysis.
+        init_tol:                     float                Tolerance criteria used to check for convergence.
+        init_iter:                    float                Max number of iterations to check.
+        algorithm_type:              string                The integrator object determines the meaning of the terms in the system of equation object Ax=B.
+        analysis:                    string                The analysis object, which defines what type of analysis is to be performed.
         
-        ops.system(system) # creates the system of equations, a sparse solver with partial pivoting
-        ops.constraints(constraints) # creates the constraint handler, the transformation method
+        Returns
+        -------
+        None.
+    
+        """
+        
+        ### Define the analysis objects and run gravity analysis
+        ops.system(ansys_soe) # creates the system of equations, a sparse solver with partial pivoting
+        ops.constraints(constraints_handler) # creates the constraint handler, the transformation method
         ops.numberer(numberer) # creates the DOF numberer, the reverse Cuthill-McKee algorithm
-        ops.test(test, tol, iters, 3) # creates the convergence test
-        ops.algorithm(algorithm) # creates the solution algorithm, a Newton-Raphson algorithm
+        ops.test(test_type, init_tol, init_iter, 3) # creates the convergence test
+        ops.algorithm(algorithm_type) # creates the solution algorithm, a Newton-Raphson algorithm
         ops.integrator(integrator, (1/nG)) # creates the integration scheme
         ops.analysis(analysis) # creates the analysis object
         ops.analyze(nG) # perform the gravity load analysis
         ops.loadConst('-time', 0.0)
+
+        ### Wipe the analysis objects
+        ops.wipeAnalysis()
+        
+    def do_modal_analysis(self, num_modes=3, solver = '-genBandArpack', pflag=False):
+        """
+        Perform modal analysis on MDOF
     
-    def do_modal_analysis(self, num_modes=2, solver = '-genBandArpack', pflag=True):
+        Parameters
+        ----------
+        num_modes:                      int                Number of modes to consider (default is 2).
+        solver:                      string                Type of solver (default is -genBandArpack).
+        pflag:                       string                Flag to print (or not) the modal analysis report.
+        
+        Returns
+        -------
+        T:                            array                Periods of vibration.
+        """        
     
-        # get fundamental frequency and fundamental period        
+        ### Get frequency and period        
         omega = np.power(ops.eigen(solver, num_modes), 0.5)
         T = 2.0*np.pi/omega
-        # get list of model nodes
+        ### Get list of model nodes
         nodeList = ops.getNodeTags()            
-        # print report
+        ### Print optional report
         if pflag == True:
             ops.modalProperties('-print')
         else:
             pass
+        ### Print output
+        print(r'Fundamental Period in X:  T = {:.3f} s'.format(T[0]))
+        print(r'Fundamental Period in Y:  T = {:.3f} s '.format(T[1]))
+        
+        # Use a rayleigh damping model
+        w_i = omega[0]    # Use the first and third modes
+        w_j = omega[2] 
+        xi_i = 0.05
+        xi_j = 0.05
+        alpha_m = 2*w_i*w_j/(w_j*w_j-w_i*w_i)*(w_j*xi_i-w_i*xi_j)
+        beta_k = 2*w_i*w_j/(w_j*w_j-w_i*w_i)*(-xi_i/w_j+xi_j/w_i)
+        ops.rayleigh(alpha_m, 0.0, beta_k, 0.0)
+
+        ### Wipe the analysis objects
+        ops.wipeAnalysis()      
+        
+        return T
             
-    def do_spo_analysis(self, ref_disp, disp_scale_factor, push_dir, pflag=True, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, algorithm_type='KrylovNewton'):
-                
+    def do_spo_analysis(self, ref_disp, disp_scale_factor, push_dir, pflag=True, 
+                        num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', 
+                        numberer='RCM', test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, 
+                        algorithm_type='KrylovNewton'):
+        """
+        Perform static pushover analysis on MDOF
+    
+        Parameters
+        ----------
+        ref_disp:                     float                Reference displacement to analyses are run. Corresponds to yield or equivalent other, such as 1mm.
+        disp_scale_factor:            float                Multiple of ref_disp to which the push is run. So pushover can be run to a specified ductility or displacement.
+        push_dir:                       int                Direction of pushover (1 = X; 2 = Y; 3 = Z)
+        pflag:                       string                Flag to print (or not) the static pushover analysis steps
+        num_steps:                      int                Number of spo analysis steps to perform
+        ansys_soe:                   string                System of equations type
+        constraints_handler:         string                The constraints handler object determines how the constraint equations are enforced in the analysis. Constraint equations enforce a specified value for a DOF, or a relationship between DOFs.
+        numberer:                    string                The DOF numberer object determines the mapping between equation numbers and degrees-of-freedom – how degrees-of-freedom are numbered.
+        test_type:                   string                This command is used to construct the LinearSOE and LinearSolver objects to store and solve the test of equations in the analysis
+        init_tol:                     float                Tolerance criteria used to check for convergence.
+        init_iter:                    float                Max number of iterations to check
+        algorithm_type:              string                The integrator object determines the meaning of the terms in the system of equation object Ax=B
+        
+        Returns
+        -------
+        spo_disps:                    array                Displacements at each floor
+        spo_rxn:                      array                Base shear as the sum of the reaction at the base 
+    
+        """        
+
         # apply the load pattern
         ops.timeSeries("Linear", 1) # create timeSeries
         ops.pattern("Plain", 1, 1) # create a plain load pattern
@@ -243,7 +365,7 @@ class stickModel():
         control_node = nodeList[-1]
         pattern_nodes = nodeList[1:]
         rxn_nodes = [nodeList[0]]
-        
+                
         # we can integrate modal patterns, inverse triangular, etc.
         for i in np.arange(len(pattern_nodes)):
             if push_dir == 1:
@@ -252,8 +374,7 @@ class stickModel():
                 ops.load(pattern_nodes[i], 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0, 0.0)
             elif push_dir == 3:
                 ops.load(pattern_nodes[i], 0.0, 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0)
-                
-            
+                            
         # Set up the initial objects
         ops.system(ansys_soe)
         ops.constraints(constraints_handler)
@@ -352,11 +473,43 @@ class stickModel():
             print('~~~~~~~ ANALYSIS SUCCESSFUL ~~~~~~~~~')        
         if loadf < 0:
             print('Stopped because of load factor below zero')
-                         
+        
+        ### Wipe the analysis objects
+        ops.wipeAnalysis()
+             
         return spo_disps, spo_rxn
     
-    def do_cpo_analysis(self, ref_disp, mu, numCycles, push_dir, dispIncr, pflag=True, num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', numberer='RCM', test_type='NormDispIncr', init_tol=1.0e-5, init_iter=1000, algorithm_type='KrylovNewton'):
+    def do_cpo_analysis(self, ref_disp, mu, numCycles, push_dir, dispIncr, pflag=True, 
+                        num_steps=200, ansys_soe='BandGeneral', constraints_handler='Transformation', 
+                        numberer='RCM', test_type='NormDispIncr', init_tol=1.0e-5, init_iter=1000,
+                        algorithm_type='KrylovNewton'):
+        """
+        Perform cyclic pushover analysis on MDOF
+    
+        Parameters
+        ----------
+        ref_disp:                     float                Reference displacement to analyses are run. Corresponds to yield or equivalent other, such as 1mm.
+        mu:                           float                Target ductility.
+        numCycles:                    float                Number of cycles.
+        dispIncr:                     float                Number of displacement increments.
+        push_dir:                       int                Direction of pushover (1 = X; 2 = Y; 3 = Z).
+        pflag:                       string                Flag to print (or not) the static pushover analysis steps.
+        num_steps:                      int                Number of spo analysis steps to perform.
+        ansys_soe:                   string                System of equations type.
+        constraints_handler:         string                The constraints handler object determines how the constraint equations are enforced in the analysis. Constraint equations enforce a specified value for a DOF, or a relationship between DOFs.
+        numberer:                    string                The DOF numberer object determines the mapping between equation numbers and degrees-of-freedom – how degrees-of-freedom are numbered.
+        test_type:                   string                This command is used to construct the LinearSOE and LinearSolver objects to store and solve the test of equations in the analysis.
+        init_tol:                     float                Tolerance criteria used to check for convergence.
+        init_iter:                    float                Max number of iterations to check.
+        algorithm_type:              string                The integrator object determines the meaning of the terms in the system of equation object Ax=B.
         
+        Returns
+        -------
+        cpo_disps:                    array                Displacements at each floor.
+        cpo_rxn:                      array                Base shear as the sum of the reaction at the base.
+    
+        """        
+
         # apply the load pattern
         ops.timeSeries("Linear", 1) # create timeSeries
         ops.pattern("Plain",1,1) # create a plain load pattern
@@ -461,12 +614,14 @@ class stickModel():
             for n in rxn_nodes:
                 temp += ops.nodeReaction(n, push_dir)
             cpo_rxn = np.append(cpo_rxn, -temp)
-                                
+        
+        ### Wipe the analysis objects
+        ops.wipeAnalysis()
+                      
         return cpo_disps, cpo_rxn
-
                     
     def do_nrha_analysis(self, fnames, dt_gm, sf, t_max, dt_ansys, drift_limit, 
-                         pflag=False, ansys_soe='BandGeneral', 
+                         outdir, pflag=False, ansys_soe='BandGeneral', 
                          constraints_handler='Transformation', numberer='RCM', 
                          test_type='EnergyIncr', init_tol=1.0e-8, init_iter=1000, 
                          algorithm_type='KrylovNewton'):
@@ -515,17 +670,17 @@ class stickModel():
         -------
         coll_index : int
             Collapse index (-1 for non-converged, 0 for stable, 1 for collapsed).
-        peak_drift : numpy array
+        peak_drift : numpy array (ratio, not in %)
             array of the peak drifts at each storey (determined as the storeys between the listed control_nodes) in the directions excited. IN RADIANS
-        peak_accel : numpy array
+        peak_accel : numpy array (in m/s2, divide by 9.81 to get in g)
             array of the peak accelerations at each floor (determined at the control_nodes) in the directions excited. IN TERMS OF G
-        max_peak_drift : float
+        max_peak_drift : float (ratio, not in %)
             max in either dirction of peak_drift.
         max_peak_drift_dir : str
             direction of peak_drift.
         max_peak_drift_loc : int
             storey location of peak_drift.(Storeys = 1, 2, 3,...)
-        max_peak_accel : float
+        max_peak_accel : float (in m/s2, divide by 9.81 to get in g)
             max in either dirction of peak_accel.
         max_peak_accel_dir : str
             direction of peak_accel.
@@ -538,23 +693,23 @@ class stickModel():
         
         # Define the timeseries and patterns first
         if len(fnames) > 0:
-            nrha_tsTagX = 11
-            nrha_pTagX = 11
+            nrha_tsTagX = 1
+            nrha_pTagX = 1
             ops.timeSeries('Path', nrha_tsTagX, '-dt', dt_gm, '-filePath', fnames[0], '-factor', sf) 
             ops.pattern('UniformExcitation', nrha_pTagX, 1, '-accel', nrha_tsTagX)
             ops.recorder('Node', '-file', "floor_accel_X.txt", '-timeSeries', nrha_tsTagX, '-node', *control_nodes, '-dof', 1, 'accel')
         if len(fnames) > 1:
-            nrha_tsTagY = 22
-            nrha_pTagY = 22
+            nrha_tsTagY = 2
+            nrha_pTagY = 2
             ops.timeSeries('Path', nrha_tsTagY, '-dt', dt_gm, '-filePath', fnames[1], '-factor', sf) 
             ops.pattern('UniformExcitation', nrha_pTagY, 2, '-accel', nrha_tsTagY)
             ops.recorder('Node', '-file', "floor_accel_Y.txt", '-timeSeries', nrha_tsTagY, '-node', *control_nodes, '-dof', 2, 'accel')
         if len(fnames) > 2:
-            nrha_tsTagZ = 33
-            nrha_pTagZ = 33
+            nrha_tsTagZ = 3
+            nrha_pTagZ = 3
             ops.timeSeries('Path', nrha_tsTagZ, '-dt', dt_gm, '-filePath', fnames[2], '-factor', sf) 
             ops.pattern('UniformExcitation', nrha_pTagZ, 3, '-accel', nrha_tsTagZ)
-        
+                
         # Set up the initial objects
         ops.system(ansys_soe)
         ops.constraints(constraints_handler)
@@ -674,17 +829,19 @@ class stickModel():
         
         # Get the floor accelerations. Need to use a recorder file because a direct query would return relative values
         ops.wipe() # First wipe to finish writing to the file
+        
         if len(fnames) > 0:
-            temp1 = np.transpose(np.max(np.abs(np.loadtxt("floor_accel_X.txt")), 0))/g
+            temp1 = np.transpose(np.max(np.abs(np.loadtxt(f"{outdir}/floor_accel_X.txt")), 0))
             peak_accel[:,0] = temp1
-            os.remove("floor_accel_X.txt")
-        if len(fnames) > 1:
+            os.remove(f"{outdir}/floor_accel_X.txt")
+        
+        elif len(fnames) > 1:
             
-            temp1 = np.transpose(np.max(np.abs(np.loadtxt("floor_accel_X.txt")), 0))/g
-            temp2 = np.transpose(np.max(np.abs(np.loadtxt("floor_accel_Y.txt")), 0))/g
+            temp1 = np.transpose(np.max(np.abs(np.loadtxt(f"{outdir}/floor_accel_X.txt")), 0))
+            temp2 = np.transpose(np.max(np.abs(np.loadtxt(f"{outdir}/floor_accel_Y.txt")), 0))
             peak_accel = np.stack([temp1, temp2], axis=1)
-            os.remove("floor_accel_X.txt")
-            os.remove("floor_accel_Y.txt")
+            os.remove(f"{outdir}/floor_accel_X.txt")
+            os.remove(f"{outdir}/floor_accel_Y.txt")
         
         # Get the maximum in either direction and report the location also
         max_peak_accel = np.max(peak_accel)
@@ -707,71 +864,8 @@ class stickModel():
             print('Final state = {:d} (-1 for non-converged, 0 for stable, 1 for collapsed)'.format(coll_index))
             print('Maximum peak storey drift {:.3f} radians at storey {:d} in the {:s} direction (Storeys = 1, 2, 3,...)'.format(max_peak_drift, max_peak_drift_loc, max_peak_drift_dir))
             print('Maximum peak floor acceleration {:.3f} g at floor {:d} in the {:s} direction (Floors = 0(G), 1, 2, 3,...)'.format(max_peak_accel, max_peak_accel_loc, max_peak_accel_dir))
-                
+                   
         # Give the outputs
         return control_nodes, coll_index, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp
       
-##########################################################################
-#                             FRAGILITY MODULES                          #
-##########################################################################
 
-#    def do_fragility_analysis(self, thresholds):
-        
-        
-
-##########################################################################
-#                             MODEL COMPILATION                          #
-##########################################################################
-
-##########################################################################
-#                        VISUALISATION MODULES                           #
-##########################################################################
-    def plot_model(self, display_info=True):
-    
-    
-        modelLineColor = 'blue'
-        modellinewidth = 1
-        Vert = 'Z'
-               
-        # get list of model nodes
-        NodeCoordListX = []; NodeCoordListY = []; NodeCoordListZ = [];
-        NodeMassList = []
-        
-        nodeList = ops.getNodeTags()
-        for thisNodeTag in nodeList:
-            NodeCoordListX.append(ops.nodeCoord(thisNodeTag,1))
-            NodeCoordListY.append(ops.nodeCoord(thisNodeTag,2))
-            NodeCoordListZ.append(ops.nodeCoord(thisNodeTag,3))
-            NodeMassList.append(ops.nodeMass(thisNodeTag,1))
-        
-        # get list of model elements
-        elementList = ops.getEleTags()
-        for thisEleTag in elementList:
-            eleNodesList = ops.eleNodes(thisEleTag)
-            if len(eleNodesList)==2:
-                [NodeItag,NodeJtag] = eleNodesList
-                NodeCoordListI=ops.nodeCoord(NodeItag)
-                NodeCoordListJ=ops.nodeCoord(NodeJtag)
-                [NodeIxcoord,NodeIycoord,NodeIzcoord]=NodeCoordListI
-                [NodeJxcoord,NodeJycoord,NodeJzcoord]=NodeCoordListJ
-    
-        
-        fig = plt.figure(figsize=(12,12))
-        ax = fig.add_subplot(projection='3d')
-        
-        for i in range(len(nodeList)):
-            ax.scatter(NodeCoordListX[i],NodeCoordListY[i],NodeCoordListZ[i],s=50,color='black')
-            if display_info == True:
-                ax.text(NodeCoordListX[i],NodeCoordListY[i],NodeCoordListZ[i],  'Node#:%s (%s,%s,%s)' % (str(i),str(NodeCoordListX[i]),str(NodeCoordListY[i]),str(NodeCoordListZ[i])), size=20, zorder=1, color='black') 
-        
-        i = 0
-        while i < len(elementList):
-            
-            x = [NodeCoordListX[i], NodeCoordListX[i+1]]
-            y = [NodeCoordListY[i], NodeCoordListY[i+1]]
-            z = [NodeCoordListZ[i], NodeCoordListZ[i+1]]
-            
-            plt.plot(x,y,z,color='blue')
-            i = i+1
-        
-        plt.show()
