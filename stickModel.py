@@ -188,7 +188,7 @@ class stickModel():
         None.
     
         """
-        with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/gem_logo.png') as file:
+        with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/imgs/gem_logo.png') as file:
             img = image.imread(file)
 
         modelLineColor = 'blue'
@@ -284,7 +284,7 @@ class stickModel():
         ### Wipe the analysis objects
         ops.wipeAnalysis()
         
-    def do_modal_analysis(self, num_modes=3, solver = '-genBandArpack', pflag=False):
+    def do_modal_analysis(self, num_modes=3, solver = '-genBandArpack', doRayleigh=False, pflag=False):
         """
         Perform modal analysis on MDOF
     
@@ -310,17 +310,17 @@ class stickModel():
         else:
             pass
         ### Print output
-        print(r'Fundamental Period in X:  T = {:.3f} s'.format(T[0]))
-        print(r'Fundamental Period in Y:  T = {:.3f} s '.format(T[1]))
+        print(r'Fundamental Period:  T = {:.3f} s'.format(T[0]))
         
-        # Use a rayleigh damping model
-        w_i = omega[0]    # Use the first and third modes
-        w_j = omega[2] 
-        xi_i = 0.05
-        xi_j = 0.05
-        alpha_m = 2*w_i*w_j/(w_j*w_j-w_i*w_i)*(w_j*xi_i-w_i*xi_j)
-        beta_k = 2*w_i*w_j/(w_j*w_j-w_i*w_i)*(-xi_i/w_j+xi_j/w_i)
-        ops.rayleigh(alpha_m, 0.0, beta_k, 0.0)
+        if doRayleigh:
+            # Use a rayleigh damping model
+            w_i = omega[0]    # Use the first and third modes
+            w_j = omega[2] 
+            xi_i = 0.05
+            xi_j = 0.05
+            alpha_m = 2*w_i*w_j/(w_j*w_j-w_i*w_i)*(w_j*xi_i-w_i*xi_j)
+            beta_k = 2*w_i*w_j/(w_j*w_j-w_i*w_i)*(-xi_i/w_j+xi_j/w_i)
+            ops.rayleigh(alpha_m, 0.0, beta_k, 0.0)
 
         ### Wipe the analysis objects
         ops.wipeAnalysis()      
@@ -368,12 +368,23 @@ class stickModel():
                 
         # we can integrate modal patterns, inverse triangular, etc.
         for i in np.arange(len(pattern_nodes)):
-            if push_dir == 1:
-                ops.load(pattern_nodes[i], nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0, 0.0, 0.0)
+            if push_dir == 1:    
+                if len(pattern_nodes)==1:
+                    ops.load(pattern_nodes[i], 1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                else:
+                    ops.load(pattern_nodes[i], nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0, 0.0, 0.0)
+            
             elif push_dir == 2:
-                ops.load(pattern_nodes[i], 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0, 0.0)
+                if len(pattern_nodes)==1:
+                    ops.load(pattern_nodes[i], 0.0, 1.0, 0.0, 0.0, 0.0, 0.0)
+                else:
+                    ops.load(pattern_nodes[i], 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0, 0.0)
+    
             elif push_dir == 3:
-                ops.load(pattern_nodes[i], 0.0, 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0)
+                if len(pattern_nodes)==1:
+                    ops.load(pattern_nodes[i], 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+                else:
+                    ops.load(pattern_nodes[i], 0.0, 0.0, nodeList[i]/len(pattern_nodes), 0.0, 0.0, 0.0)
                             
         # Set up the initial objects
         ops.system(ansys_soe)

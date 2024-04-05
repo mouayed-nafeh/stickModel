@@ -24,7 +24,7 @@ def plotDemandProfiles(ansys_dict, nansys, saveOutput):
     """
            
     ### Initialise the figure
-    with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/gem_logo.png') as file:
+    with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/imgs/gem_logo.png') as file:
         img = image.imread(file)
     plt.figure(figsize=(12, 6))
     ax1 = plt.subplot(1,2,1)
@@ -80,7 +80,7 @@ def plotCloudAnalysis(im, edp, im_fitted, edp_fitted, im_label, saveOutput):
 
     """
     ### Initialise the figure
-    with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/gem_logo.png') as file:
+    with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/imgs/gem_logo.png') as file:
         img = image.imread(file)
     ### Plot the cloud
     plt.scatter(edp, im, alpha = 0.5)
@@ -118,7 +118,7 @@ def plotFragilities(imls, poes, im_label, saveOutput):
     
     ### Initialise the figure
     colors = ['blue','green','yellow','red','black']
-    with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/gem_logo.png') as file:
+    with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/imgs/gem_logo.png') as file:
         img = image.imread(file)
     for i in range(len(poes)):
         plt.plot(imls, poes[i], linewidth=2.5, linestyle = '-', color = colors[i])

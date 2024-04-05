@@ -109,7 +109,7 @@ def calculateFragParams(edp, im, edp_fitted, im_fitted, damageThreshold, beta_bu
         
         ### Calculate the standard deviation
         y_true = np.log(im)
-        y_pred = pw_fit.predict(np.log(edp))
+        y_pred = b*np.log(edp)+a
         beta = RSE(y_true, y_pred)
     
         ### Calculate the total variability accounting for the modelling uncertainty

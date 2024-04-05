@@ -19,6 +19,25 @@ def export_to_pkl(path, var):
     with open(path, 'wb') as file:
         return pickle.dump(var, file)
 
+### Function to read one column file
+def read_one_column_file(file_name):
+    with open(file_name, 'r') as data:
+        x = []
+        for number in data:
+            x.append(float(number))
+    return x
+
+### Function to read two-column file
+def read_two_column_file(file_name):
+    with open(file_name, 'r') as data:
+        x = []
+        y = []
+        for line in data:
+            p = line.split()
+            x.append(float(p[0]))
+            y.append(float(p[1]))
+    return x, y
+
 ### Function to sort items alphanumerically
 def sorted_alphanumeric(data):
     convert = lambda text: int(text) if text.isdigit() else text.lower()
@@ -35,7 +54,7 @@ def duplicate_for_drift(drifts,control_nodes):
     x.append(0.0)
     return x, y
 
-### Function to create nonlinear material for Opensees
+### Function to create hystereticSM nonlinear material for Opensees
 def createHystereticMaterial(matTag, F, D, pinchX=0.50, pinchY=0.50, damageX= 0.50, damageY= 0.50):
     # Bilinear
     if len(F)==2 and len(D)==2:
@@ -49,6 +68,61 @@ def createHystereticMaterial(matTag, F, D, pinchX=0.50, pinchY=0.50, damageX= 0.
     elif len(F)==4 and len(D)==4:
         # assign bilinear material
         ops.uniaxialMaterial('HystereticSM', matTag, '-posEnv', F[0], D[0], F[1], D[1], F[2], D[2], F[3], D[3],'-negEnv', -F[0], -D[0], -F[1], -D[1], -F[2], -D[2], -F[3], -D[3], '-pinch', pinchX, pinchY,'-damage', damageX, damageY, '-beta', 0)
+
+### Function to create pinching4 nonlinear material for Opensees
+def createPinching4Material(matTag, F, D):   
+    f_vec=np.zeros([5,1])
+    d_vec=np.zeros([5,1])
+    if len(F)==2:
+          #bilinear curve
+          f_vec[1]=F[0]
+          f_vec[4]=F[-1]
+          
+          d_vec[1]=D[0]
+          d_vec[4]=D[-1]
+          
+          d_vec[2]=d_vec[1]+(d_vec[4]-d_vec[1])/3
+          d_vec[3]=d_vec[1]+2*((d_vec[4]-d_vec[1])/3)
+          
+          f_vec[2]=np.interp(d_vec[2],D,F)
+          f_vec[3]=np.interp(d_vec[3],D,F)
+          
+    elif len(F)==3:
+          
+          f_vec[1]=F[0]
+          f_vec[4]=F[-1]
+          
+          d_vec[1]=D[0]
+          d_vec[4]=D[-1]
+          
+          f_vec[2]=F[1]
+          d_vec[2]=D[1]
+          
+          d_vec[3]=np.mean([d_vec[2],d_vec[-1]])
+          f_vec[3]=np.interp(d_vec[3],D,F)
+          
+    elif len(F)==4:
+          f_vec[1]=F[0]
+          f_vec[4]=F[-1]
+          
+          d_vec[1]=D[0]
+          d_vec[4]=D[-1]
+          
+          f_vec[2]=F[1]
+          d_vec[2]=D[1]
+          
+          f_vec[3]=F[2]
+          d_vec[3]=D[2]
+          
+    matargs=[f_vec[1,0],d_vec[1,0],f_vec[2,0],d_vec[2,0],f_vec[3,0],d_vec[3,0],f_vec[4,0],d_vec[4,0],
+                         -1*f_vec[1,0],-1*d_vec[1,0],-1*f_vec[2,0],-1*d_vec[2,0],-1*f_vec[3,0],-1*d_vec[3,0],-1*f_vec[4,0],-1*d_vec[4,0],
+                         0.5,0.25,0.05,
+                         0.5,0.25,0.05,
+                         0,0,0,0,0,
+                         0,0,0,0,0,
+                         0,0,0,0,0,
+                         10,'energy']
+    ops.uniaxialMaterial('Pinching4', matTag,*matargs)
 
 ### Function to perform relative squared error estimation for uncertainty quantification in regression
 def RSE(y_true, y_predicted):
@@ -70,4 +144,3 @@ def remove_elements_at_indices(test_list, idx_list):
     # Remove element at current index
     sub_list.pop(first_idx)
     return sub_list
-
