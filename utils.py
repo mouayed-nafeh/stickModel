@@ -7,6 +7,23 @@ import pickle
 import math
 import re
 
+### Weibull function
+def fun_weibull(x, a, b, c):
+    return a * (1 - np.exp(-(x / b) ** c))
+
+### Logistic function
+def fun_logit(x,a,b):
+    return np.exp(-(a+b*np.log(x)))/(1+np.exp(-(a+b*np.log(x))))
+
+### Function to look for substrings
+def find_between( s, first, last ):
+    try:
+        start = s.rindex( first ) + len( first )
+        end = s.rindex( last, start )
+        return s[start:end]
+    except ValueError:
+        return ""
+
 ### Function to import data stored in a pickle object
 def import_from_pkl(path):
     # import file
@@ -55,7 +72,7 @@ def duplicate_for_drift(drifts,control_nodes):
     return x, y
 
 ### Function to create hystereticSM nonlinear material for Opensees
-def createHystereticMaterial(matTag, F, D, pinchX=0.50, pinchY=0.50, damageX= 0.50, damageY= 0.50):
+def createHystereticMaterial(matTag, F, D, pinchX=0.80, pinchY=0.20, damageX= 0.01, damageY= 0.01):
     # Bilinear
     if len(F)==2 and len(D)==2:
         # assign bilinear material
@@ -71,8 +88,11 @@ def createHystereticMaterial(matTag, F, D, pinchX=0.50, pinchY=0.50, damageX= 0.
 
 ### Function to create pinching4 nonlinear material for Opensees
 def createPinching4Material(matTag, F, D):   
+
     f_vec=np.zeros([5,1])
     d_vec=np.zeros([5,1])
+    
+    # Bilinear
     if len(F)==2:
           #bilinear curve
           f_vec[1]=F[0]
@@ -86,7 +106,8 @@ def createPinching4Material(matTag, F, D):
           
           f_vec[2]=np.interp(d_vec[2],D,F)
           f_vec[3]=np.interp(d_vec[3],D,F)
-          
+    
+    # Trilinear
     elif len(F)==3:
           
           f_vec[1]=F[0]
@@ -100,7 +121,8 @@ def createPinching4Material(matTag, F, D):
           
           d_vec[3]=np.mean([d_vec[2],d_vec[-1]])
           f_vec[3]=np.interp(d_vec[3],D,F)
-          
+    
+    # Quadrilinear
     elif len(F)==4:
           f_vec[1]=F[0]
           f_vec[4]=F[-1]

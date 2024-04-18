@@ -13,7 +13,7 @@ import piecewise_regression
 
 class stickModel():
 
-    def __init__(self, nst, flh, flm, stD, stF, buildingClass):
+    def __init__(self, nst, flh, flm, stD, stF):
         """
         Stick Modelling and Processing Tool
         :param nst:           int                Number of storeys
@@ -21,7 +21,6 @@ class stickModel():
         :param flm:           list               List of floor masses in tonnes (e.g. [1000, 1200])
         :param stD:           array              Array of storey displacements (size = nst, CapPoints)
         :param stF:           array              Array of storey forces (size = nst,CapPoints)
-        :param buildingClass:  str               String from GEM taxonomy (e.g. 'CR_LDUAL+CDH+DUH_H1')
         """
 
         ### Run tests on input parameters
@@ -31,7 +30,6 @@ class stickModel():
         self.nst = nst; 
         self.flh = flh; 
         self.flm = flm;
-        self.buildingClass = buildingClass;
         self.stF = stF; 
         self.stD = stD
                 

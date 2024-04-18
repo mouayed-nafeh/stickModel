@@ -1,0 +1,7 @@
+ITEM,ID,EDP,Component,Group,Quantity,Damage States,"DS1, Median Demand","DS2, Median Demand","DS3, Median Demand","DS4, Median Demand","DS5, Median Demand","DS1, Total Dispersion (Beta)","DS2, Total Dispersion (Beta)","DS3, Total Dispersion (Beta)","DS4, Total Dispersion (Beta)","DS5, Total Dispersion (Beta)","DS1, Repair COST","DS2, Repair COST","DS3, Repair COST","DS4, Repair COST","DS5, Repair COST","DS1, COST Dispersion (Beta)","DS2, COST Dispersion (Beta)","DS3, COST Dispersion (Beta)","DS4, COST Dispersion (Beta)","DS5, COST Dispersion (Beta)","DS1, best fit","DS2, best fit","DS3, best fit","DS4, best fit","DS5, best fit"
+1,Cladding - Gross Wall Area,PSD,NS,2,0.0401031456,2,0.0338,0.0383,,,,0.4,0.4,,,,491.551909029744,491.551909029744,,,,0.17,0.17,,,,Lognormal,Lognormal,,,
+2,Cladding - Windows & Glazing Area,PSD,NS,3,0.0148644864,2,0.0338,0.0383,,,,0.4,0.4,,,,491.551909029744,491.551909029744,,,,0.17,0.17,,,,Lognormal,Lognormal,,,
+3,Doors,PSD,NS,3,0.15,1,0.018799999999999997,,,,,0.38,,,,,754.0,,,,,0.3,,,,,Lognormal,,,,
+4,Windows,PSD,NS,3,0.3,1,0.018799999999999997,,,,,0.38,,,,,347.0,,,,,0.3,,,,,Lognormal,,,,
+5,Gypsum Partitions,PSD,NS,1,1.092,4,0.0018,0.0046,0.0105,0.018799999999999997,,0.52,0.54,0.4,0.38,,62.0,117.0,234.0,234.0,,0.4814,0.5559,0.1959,0.1959,,Lognormal,Lognormal,,,
+6,Ceramic tile walls,PSD,NS,2,0.004791456,2,0.0021,0.0071,,,,0.6,0.45,,,,86.11128333367778,348.750697501395,,,,0.22,0.09,,,,Lognormal,Lognormal,,,

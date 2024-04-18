@@ -5,6 +5,7 @@ import numpy as np
 from utils import *
 from scipy import stats, optimize, interpolate
 import piecewise_regression
+from scipy.optimize import minimize
 
 def cloudAnalysis(im,edp):
     """
@@ -34,7 +35,11 @@ def cloudAnalysis(im,edp):
         ### Reproduce the function
         xx = np.linspace(np.log(np.min(edp)), np.log(np.max(edp)), 100)
         yy = pw_fit.predict(xx)
-    
+        
+        ### Return the values
+        im_fitted = np.exp(yy)
+        edp_fitted= np.exp(xx)    
+
     else:
         
         ### Fit linear regression
@@ -44,11 +49,12 @@ def cloudAnalysis(im,edp):
                     
         ### Reproduce the function
         xx = np.linspace(np.log(np.min(edp)), np.log(np.max(edp)), 100)
-        yy = b*np.log(xx)+a
-    
-    im_fitted = np.exp(yy)
-    edp_fitted= np.exp(xx)    
-    
+        yy = b*xx+a
+        
+        ### Return the values
+        im_fitted = np.exp(yy)
+        edp_fitted = np.exp(xx)
+        
     return im_fitted, edp_fitted
 
 def calculateFragParams(edp, im, edp_fitted, im_fitted, damageThreshold, beta_build2build =0.3):
@@ -93,11 +99,12 @@ def calculateFragParams(edp, im, edp_fitted, im_fitted, damageThreshold, beta_bu
     
         ### Calculate the total variability accounting for the modelling uncertainty
         beta_total = np.sqrt(beta**2+beta_build2build**2)
+
     
     else:
         
         print('Piecewise Regression Did Not Converge...Fitting Simple Linear Regression')
-
+       
         ### Fit linear regression
         p = np.polyfit(np.log(edp), np.log(im), 1)
         b = p[0]
@@ -105,7 +112,7 @@ def calculateFragParams(edp, im, edp_fitted, im_fitted, damageThreshold, beta_bu
                     
         ### Reproduce the function
         xx = np.linspace(np.log(np.min(edp)), np.log(np.max(edp)), 100)
-        yy = b*np.log(xx)+a
+        yy = b*xx+a
         
         ### Calculate the standard deviation
         y_true = np.log(im)
@@ -140,3 +147,45 @@ def getDamageProbability(theta, beta_total):
     p = stats.norm.cdf(np.log((np.linspace(0.0, 5.0, 1000))/ theta) / beta_total, loc=0, scale=1)
     
     return imls, p
+
+
+def mle_fit(IM = [], trials = [], obs = [], x0 = [0.8, 0.4]):
+  """
+  Fits a lognormal CDF curve according to Baker, J. W. (2015). Earthquake Spectra, 31(1), 579-599.
+
+  INPUTS:
+  
+  IM-------------1xn              IM Levels of interest      
+  
+  trials---------1x1 or 1xn       number of ground motions @ IM level 
+  
+  obs------------1xn              number of occurrences observed @ IM level
+  
+  x0-------------[theta, beta]    initial solution (optional)
+  
+  OUTPUTS:
+  
+  array[theta, beta]              median and dispersion of fragility function
+  
+  EXAMPLE: (Same as on Baker's video)
+  
+  mle_fit(IM=[0.2,0.3,0.4,0.6,0.7,0.8,0.9,1.0], 
+          trials = 40,
+          obs = [0,0,0,4,6,13,12,16])
+  
+  --output: array([1.07611623, 0.42923779])
+  """
+
+  if len(trials if type(trials) is list else [trials]) == 1:
+    trials = np.repeat(trials, len(IM))
+
+  def func(x):
+    theta, beta = x
+    poes = obs/trials #calculates the observed probability of exceedance based on number of occurrences over number of records tested
+    poes_fitted = stats.lognorm.cdf(IM, beta, scale = theta) #evaluates the probability calculated under the initial assumption of theta and beta
+    likelihood = stats.binom.pmf(k = obs, n = trials, p = poes_fitted) #calculates the likelihood of the parameters being correct
+    return -np.sum(np.log(likelihood)) #sum of the logs of the likelihood to be minimized
+
+  sol = minimize(func, x0 = x0, method = 'SLSQP', bounds= ((0,None),(0, None))) #this finds a solution, bounds prevent negative values, check documentation for other settings
+
+  return sol.x

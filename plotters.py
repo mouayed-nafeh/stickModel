@@ -31,7 +31,7 @@ def plotDemandProfiles(ansys_dict, nansys, saveOutput):
     ax2 = plt.subplot(1,2,2)
     
     ### get number of storeys
-    nst = ansys_dict['peak_drift_list'][0].shape[0]
+    nst = len(ansys_dict['control_nodes'])-1
     
     ### plot the results
     for i in range(nansys):
@@ -132,4 +132,93 @@ def plotFragilities(imls, poes, im_label, saveOutput):
     plt.show()
     ### save the output
     if saveOutput[0]:
-        plt.savefig(f'{saveOutput[1]}/model_fragilities_{im_label}.png', dpi=1200, format='png')
+        plt.savefig(f'{saveOutput[1]}/model_fragility_{im_label}.png', dpi=1200, format='png')
+
+
+def plot_slf_rlz(psd_slf, psd_cache, pfa_slf, pfa_cache, rlz_to_consider = 100):
+    """
+    Plots the storey loss functions and the individual realizations
+
+    Parameters
+    ----------
+    psd_slf:                 dictionary                Dictionary with the slfs of drift-sensitive components (output of create_slfs function) 
+    psd_cache:               dictionary                Dictionary with the intermediate outputs of slf-generator for drift-sensitive components (output of create_slfs function) 
+    pfa_slf:                 dictionary                Dictionary with the slfs of acceleration-sensitive components (output of create_slfs function) 
+    pfa_cache:               dictionary                Dictionary with the intermediate outputs of slf-generator for acceleration-sensitive components (output of create_slfs function) 
+    rlz_to_consider:              float                Number of realizations to plot (default set to 100 but will fail if total number of realizations is below)
+    
+    Returns
+    -------
+    None.
+
+    """
+    
+    ### Initialise the figure
+    with cbook.get_sample_data('C:/Users/Moayad/Documents/GitHub/stickModel/imgs/gem_logo.png') as file:
+        img = image.imread(file)
+    plt.figure(figsize=(12, 6))
+    ax1 = plt.subplot(1,2,1)
+    ax2 = plt.subplot(1,2,2)
+
+    ### Calculate total repair cost of all components
+    cumSum_psd = []
+    cumSum_pfa = []
+    for i in range(len(list(psd_slf.keys()))):        
+        cumSum_psd.append(np.max(psd_slf[list(psd_slf.keys())[i]]['slf']))
+        cumSum_pfa.append(np.max(pfa_slf[list(pfa_slf.keys())[i]]['slf']))
+    totalRepairCost = np.sum(cumSum_psd)+np.sum(cumSum_pfa)
+        
+    ### Fetch some params
+    rlz = len(psd_cache[list(psd_cache.keys())[0]]['total_loss_storey'])
+    categories = len(psd_slf)
+    
+    ### Initialise some colors
+    colors = ['blue','green','yellow','red']
+    
+    ### Loop over drift-sensitive components
+    for i in range(categories): 
+        # Plot individual slfs for each component category
+        edp_range = [x*100 for x in psd_slf[list(psd_slf.keys())[i]]['edp_range']]
+        slf = psd_slf[list(psd_slf.keys())[i]]['norm_slf'][0]
+        ax1.plot(edp_range, slf, color = colors[i], linewidth=8, label = psd_slf[list(psd_slf.keys())[i]]['category'][0])
+        
+        for j in range(rlz_to_consider):               
+            # Plot scatter of individual realizations
+            edp_range = [x*100 for x in psd_slf[list(psd_slf.keys())[i]]['edp_range']]
+            realization = psd_cache[list(psd_cache.keys())[i]]['total_loss_storey'][j]
+            maxval = totalRepairCost
+            normRealization = [i/maxval for i in realization]   
+            ax1.scatter(edp_range, normRealization, color = colors[i], alpha = 0.7)
+        
+        ax1.set_xlabel(r'Peak Storey Drift, $\theta$ [%]')
+        ax1.set_ylabel('Loss Ratio')
+        ax1.grid(visible=True, which='major')
+        ax1.grid(visible=True, which='minor')
+        ax1.legend(loc='upper left')
+        ax1.set_xlim([0, 5])
+        ax1.set_ylim([0, 1])
+
+    ### Loop over acceleration-sensitive components
+    for i in range(categories):
+        # Plot individual slfs for each component category
+        edp_range = pfa_slf[list(pfa_slf.keys())[i]]['edp_range']
+        slf = pfa_slf[list(pfa_slf.keys())[i]]['norm_slf'][0]
+        ax2.plot(edp_range, slf, color = colors[i], linewidth=8, label = pfa_slf[list(pfa_slf.keys())[i]]['category'][0])
+        
+        for j in range(rlz_to_consider):
+            # Plot scatter of individual realizations
+            edp_range = pfa_slf[list(pfa_slf.keys())[i]]['edp_range']
+            realization = pfa_cache[list(pfa_cache.keys())[i]]['total_loss_storey'][j]
+            maxval = totalRepairCost
+            normRealization = [i/maxval for i in realization]   
+            ax2.scatter(edp_range, normRealization, color = colors[i], alpha = 0.7)
+        
+        ax2.set_xlabel(r'Peak Floor Acceleration, $a_{max}$ [g]')
+        ax2.set_ylabel('Loss Ratio')
+        ax2.grid(visible=True, which='major')
+        ax2.grid(visible=True, which='minor')
+        ax2.legend(loc='upper left')
+        ax2.set_xlim([0, 5])
+        ax2.set_ylim([0, 1])
+        
+    plt.show()
