@@ -1,0 +1,11 @@
+Building_class,Number_storeys,Storey_height,Type_of_period_func,a_period_param,b_period_param,Yield_period,Participation_factor,Yield_drift,Ult_drift,Type_cap_curve,Yield_mult_factor,Ult_mult_factor,Ratio_capacity_last_line
+CR_LFINF+CDL+DUL_H1,1,2.8,Poly,0.055,0,0.15,1.33,0.0012,0.013,Quadrilinear,1,1,1.01
+CR_LFINF+CDL+DUL_H2,2,2.8,Poly,0.055,0,0.31,1.33,0.0012,0.013,Quadrilinear,1.05,0.94,1.01
+CR_LFINF+CDL+DUL_H3,3,2.8,Poly,0.055,0,0.46,1.33,0.0012,0.013,Quadrilinear,1.12,0.87,1.01
+CR_LFINF+CDL+DUL_H4,4,2.8,Poly,0.055,0,0.62,1.33,0.0012,0.013,Quadrilinear,1.2,0.81,1.01
+CR_LFINF+CDL+DUL_H5,5,2.8,Poly,0.055,0,0.77,1.33,0.0012,0.013,Quadrilinear,1.27,0.74,1.01
+CR_LFINF+CDL+DUL_H6,6,2.8,Poly,0.055,0,0.92,1.33,0.0012,0.013,Quadrilinear,1.35,0.71,1.01
+CR_LFINF+CDL+DUL_H7,7,2.8,Poly,0.055,0,1.08,1.33,0.0012,0.013,Quadrilinear,1.42,0.67,1.01
+CR_LFINF+CDL+DUL_H8,8,2.8,Poly,0.055,0,1.23,1.33,0.0012,0.013,Quadrilinear,1.5,0.64,1.01
+CR_LFINF+CDL+DUL_H9,9,2.8,Poly,0.055,0,1.39,1.33,0.0012,0.013,Quadrilinear,1.57,0.6,1.01
+CR_LFINF+CDL+DUL_H10,10,2.8,Poly,0.055,0,1.54,1.33,0.0012,0.013,Quadrilinear,1.65,0.57,1.01

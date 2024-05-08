@@ -2,132 +2,13 @@
 #                          POSTPROCESSING MODULE                         #
 ##########################################################################
 import numpy as np
+import math
 from utils import *
 from scipy import stats, optimize, interpolate
 import piecewise_regression
 from scipy.optimize import minimize
 
-def cloudAnalysis(im,edp):
-    """
-    Processes cloud analysis results adaptively by fitting either a piecewise or 1st order linear regression
-
-    Parameters
-    ----------
-    im:                            list                List of intensity measures.
-    edp:                           list                List of engineering demand parameters (e.g., maximum peak storey drift).
-    
-    Returns
-    -------
-    im_fitted:                     list                List of predicted intensity measures.
-    edp_fitted:                    list                List of equally spaced edp values sampled based on the minimum and maximum observed edps.
-    """        
-    
-    ### Fit the piecewise regression in the log-log space
-    pw_fit = piecewise_regression.Fit(np.log(edp), np.log(im), n_breakpoints=1)
-    
-    ### Print the summary of the regression
-    pw_fit.summary()    
-    pw_results = pw_fit.get_results()
-    
-    ### Calculate variability and resulting regression
-    if pw_results['converged']:
-            
-        ### Reproduce the function
-        xx = np.linspace(np.log(np.min(edp)), np.log(np.max(edp)), 100)
-        yy = pw_fit.predict(xx)
-        
-        ### Return the values
-        im_fitted = np.exp(yy)
-        edp_fitted= np.exp(xx)    
-
-    else:
-        
-        ### Fit linear regression
-        p = np.polyfit(np.log(edp), np.log(im), 1)
-        b = p[0]
-        a = p[1]
-                    
-        ### Reproduce the function
-        xx = np.linspace(np.log(np.min(edp)), np.log(np.max(edp)), 100)
-        yy = b*xx+a
-        
-        ### Return the values
-        im_fitted = np.exp(yy)
-        edp_fitted = np.exp(xx)
-        
-    return im_fitted, edp_fitted
-
-def calculateFragParams(edp, im, edp_fitted, im_fitted, damageThreshold, beta_build2build =0.3):
-    """
-    Calculates the median seismic intensity associated with an edp-based damage threshold based on cloud analysis regression
-
-    Parameters
-    ----------
-    im:                            list                List of intensity measures.
-    edp:                           list                List of engineering demand parameters (e.g., maximum peak storey drift).
-    damageThreshold:              float                EDP-based damage threshold (e.g. for 5% maximum peak storey drift, damageThreshold = 0.05).
-    beta_build2build:             float                Building-to-building variability or modelling uncertainty (default is 0.3).
-    
-    Returns
-    -------
-    theta:                        float                Median seismic intensity given edp-based damage threshold.
-    beta_total:                   float                Total uncertainty (i.e. accounting for record-to-record and modelling variabilities). 
-
-    """        
-    
-    
-    ### Fit the piecewise regression in the log-log space
-    pw_fit = piecewise_regression.Fit(np.log(edp), np.log(im), n_breakpoints=1)
-    
-    ### Print the summary of the regression
-    pw_fit.summary()    
-    pw_results = pw_fit.get_results()
-    
-    ### Calculate variability and resulting regression
-    if pw_results['converged']:
-        
-        print('Piecewise Regression Converged')
-        
-        ### Reproduce the function
-        xx = np.linspace(np.log(np.min(edp)), np.log(np.max(edp)), 100)
-        yy = pw_fit.predict(xx)
-        
-        ### Calculate the standard deviation
-        y_true = np.log(im)
-        y_pred = pw_fit.predict(np.log(edp))
-        beta = RSE(y_true, y_pred)
-    
-        ### Calculate the total variability accounting for the modelling uncertainty
-        beta_total = np.sqrt(beta**2+beta_build2build**2)
-
-    
-    else:
-        
-        print('Piecewise Regression Did Not Converge...Fitting Simple Linear Regression')
-       
-        ### Fit linear regression
-        p = np.polyfit(np.log(edp), np.log(im), 1)
-        b = p[0]
-        a = p[1]
-                    
-        ### Reproduce the function
-        xx = np.linspace(np.log(np.min(edp)), np.log(np.max(edp)), 100)
-        yy = b*xx+a
-        
-        ### Calculate the standard deviation
-        y_true = np.log(im)
-        y_pred = b*np.log(edp)+a
-        beta = RSE(y_true, y_pred)
-    
-        ### Calculate the total variability accounting for the modelling uncertainty
-        beta_total = np.sqrt(beta**2+beta_build2build**2)
-            
-    f = interpolate.interp1d(edp_fitted, im_fitted, fill_value='extrapolate')
-    theta = f(damageThreshold)
-        
-    return theta, beta_total    
-
-def getDamageProbability(theta, beta_total):
+def getDamageProbability(sampled_ims, theta, beta_total):
     """
     Calculate the damage state lognormal CDF for a set of median seismic intensity and associated dispersion
 
@@ -143,49 +24,114 @@ def getDamageProbability(theta, beta_total):
     """        
 
     ### calculate probabilities of exceedance for a range of intensity measure levels
-    imls = np.linspace(0.0,5.0,1000)
-    p = stats.norm.cdf(np.log((np.linspace(0.0, 5.0, 1000))/ theta) / beta_total, loc=0, scale=1)
+    p = stats.norm.cdf(np.log(sampled_ims/ theta) / beta_total, loc=0, scale=1)
     
-    return imls, p
+    return p
 
 
-def mle_fit(IM = [], trials = [], obs = [], x0 = [0.8, 0.4]):
-  """
-  Fits a lognormal CDF curve according to Baker, J. W. (2015). Earthquake Spectra, 31(1), 579-599.
+def cloudAnalysis(imls,edps,damage_thresholds,sigma_build2build=0.3):
+    """
+    Processes cloud analysis and fits linear regression after due consideration of collapse
 
-  INPUTS:
-  
-  IM-------------1xn              IM Levels of interest      
-  
-  trials---------1x1 or 1xn       number of ground motions @ IM level 
-  
-  obs------------1xn              number of occurrences observed @ IM level
-  
-  x0-------------[theta, beta]    initial solution (optional)
-  
-  OUTPUTS:
-  
-  array[theta, beta]              median and dispersion of fragility function
-  
-  EXAMPLE: (Same as on Baker's video)
-  
-  mle_fit(IM=[0.2,0.3,0.4,0.6,0.7,0.8,0.9,1.0], 
-          trials = 40,
-          obs = [0,0,0,4,6,13,12,16])
-  
-  --output: array([1.07611623, 0.42923779])
-  """
+    Parameters
+    ----------
+    imls:                          list                List of intensity measures.
+    edps:                          list                List of engineering demand parameters (e.g., maximum peak storey drift).
+    damage_thresholds:             list                List of edp-based damage thresholds
+    
+    Returns
+    -------
+    fitted_regression:             array               Array of edps (i.e., fitted_regression[:,0])  vs im (i.e., fitted regression[:,1])
+    fragility_array:               array               Array of sampled ims vs probability of damage (first column of the array are the intensity measure levels and the remaining columns are the probability of damage values for each DS)
+    theta:                         array               Array of median seismic intensities [g]
+    beta_total:                    float               Total uncertainty (considering record-to-record and building-to-building variabilities)
+    """        
+    
+    censored_limit = 1.50*damage_thresholds[-1]
+    min_edp = 0.1*damage_thresholds[0]
+    
+    # Convert to numpy array type
+    if isinstance(imls, np.ndarray):
+        pass
+    else:
+        imls = np.array(imls)
+    if isinstance(edps, np.ndarray):
+        pass
+    else:
+        edps = np.array(edps)
+        
+    # Filter the arrays
+    imls=imls[edps>=min_edp]
+    edps=edps[edps>=min_edp]
 
-  if len(trials if type(trials) is list else [trials]) == 1:
-    trials = np.repeat(trials, len(IM))
+    x_array=np.log(imls)
+    y_array=edps
+    
+    # checks if the y value is above the censored limit
+    bool_is_censored=y_array>=censored_limit
+    bool_is_not_censored=y_array<censored_limit
+    
+    # creates an array where all the censored values are set to the limit
+    observed=np.log((y_array*bool_is_not_censored)+(censored_limit*bool_is_censored))
+    
+    y_array=np.log(edps)
+    
+    def func(x):
+          p = np.array([stats.norm.pdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed))],dtype=float)
+          return -np.sum(np.log(p[p!= 0]))
+    sol1=optimize.fmin(func,[1,1,1],disp=False)
+    
+    def func2(x):
+          p1 = np.array([stats.norm.pdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed)) if bool_is_censored[i]==0],dtype=float)
+          
+          p2 = np.array([1-stats.norm.cdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed)) if bool_is_censored[i]==1],dtype=float)
+          return -np.sum(np.log(p1[p1 != 0]))-np.sum(np.log(p2[p2 != 0]))
+    
+    p_cens=optimize.fmin(func2,[sol1[0],sol1[1],sol1[2]],disp=False)
+    
+    
+    beta_edp=np.array([p_cens[0],p_cens[1]])
+          
+    sse=np.empty([len(y_array),1])
+    ssto=np.empty([len(y_array),1])
+    for i in range(len(y_array)):
+        sse[i]=(y_array[i]-(p_cens[0]*x_array[i]+p_cens[1]))**2
+        ssto[i]=(y_array[i]-np.mean(y_array,dtype=float))**2
+    
+    r_square=np.ones(len(damage_thresholds))*(1-(np.sum(sse)/np.sum(ssto)))
+    sigma_edp = math.sqrt((1-r_square[0])**2+sigma_build2build)
+    
+    x_vec=np.linspace(np.log(0.05),np.log(15),endpoint=True)
+    probability_damage_state=np.zeros([len(x_vec),len(damage_thresholds)])
+    for i in range(len(x_vec)):
+          mu=p_cens[0]*x_vec[i]+p_cens[1]
+          for j in range(len(damage_thresholds)):
+                probability_damage_state[i][j]=1-(stats.norm.cdf(np.log(damage_thresholds[j]),loc=mu,scale=sigma_edp))
+                
+    
+    # Reproduce the function
+    xx = np.linspace(np.log(np.min(imls)), np.log(np.max(imls)), 100)
+    yy = p_cens[0]*xx+p_cens[1]
+    
+    # Pack the regression array
+    xx = np.exp(xx)
+    yy = np.exp(yy)
+    regression_array = np.column_stack((xx,yy))
+    
+    # Get median intensities and dispersion for each DS
+    theta = np.zeros([1,len(damage_thresholds)])
+    beta_total = np.zeros([1,len(damage_thresholds)])
+    for i in range(len(damage_thresholds)):
+        theta[0,i] = np.exp(p_cens[0]*np.log(damage_thresholds[i])+p_cens[1])
+        beta_total[0,i] = sigma_edp
+    
+    # Get fragility functions for each damage state
+    sampled_ims = np.linspace(0,10,1000)
+    poes = np.zeros([len(sampled_ims),len(damage_thresholds)])
+    for i in range(len(damage_thresholds)):
+        poes[:,i] = getDamageProbability(sampled_ims,theta[0,i], beta_total[0,i])
+    
+    # Pack the fragility array
+    fragility_array = np.column_stack((sampled_ims, poes))  
 
-  def func(x):
-    theta, beta = x
-    poes = obs/trials #calculates the observed probability of exceedance based on number of occurrences over number of records tested
-    poes_fitted = stats.lognorm.cdf(IM, beta, scale = theta) #evaluates the probability calculated under the initial assumption of theta and beta
-    likelihood = stats.binom.pmf(k = obs, n = trials, p = poes_fitted) #calculates the likelihood of the parameters being correct
-    return -np.sum(np.log(likelihood)) #sum of the logs of the likelihood to be minimized
-
-  sol = minimize(func, x0 = x0, method = 'SLSQP', bounds= ((0,None),(0, None))) #this finds a solution, bounds prevent negative values, check documentation for other settings
-
-  return sol.x
+    return fragility_array, regression_array, theta, beta_total

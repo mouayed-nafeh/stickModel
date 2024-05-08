@@ -87,7 +87,7 @@ def createHystereticMaterial(matTag, F, D, pinchX=0.80, pinchY=0.20, damageX= 0.
         ops.uniaxialMaterial('HystereticSM', matTag, '-posEnv', F[0], D[0], F[1], D[1], F[2], D[2], F[3], D[3],'-negEnv', -F[0], -D[0], -F[1], -D[1], -F[2], -D[2], -F[3], -D[3], '-pinch', pinchX, pinchY,'-damage', damageX, damageY, '-beta', 0)
 
 ### Function to create pinching4 nonlinear material for Opensees
-def createPinching4Material(matTag, F, D):   
+def createPinching4Material(mat1Tag, mat2Tag, F, D, degradation=False):   
 
     f_vec=np.zeros([5,1])
     d_vec=np.zeros([5,1])
@@ -135,16 +135,29 @@ def createPinching4Material(matTag, F, D):
           
           f_vec[3]=F[2]
           d_vec[3]=D[2]
-          
-    matargs=[f_vec[1,0],d_vec[1,0],f_vec[2,0],d_vec[2,0],f_vec[3,0],d_vec[3,0],f_vec[4,0],d_vec[4,0],
-                         -1*f_vec[1,0],-1*d_vec[1,0],-1*f_vec[2,0],-1*d_vec[2,0],-1*f_vec[3,0],-1*d_vec[3,0],-1*f_vec[4,0],-1*d_vec[4,0],
-                         0.5,0.25,0.05,
-                         0.5,0.25,0.05,
-                         0,0,0,0,0,
-                         0,0,0,0,0,
-                         0,0,0,0,0,
-                         10,'energy']
-    ops.uniaxialMaterial('Pinching4', matTag,*matargs)
+
+    if degradation==True:
+        matargs=[f_vec[1,0],d_vec[1,0],f_vec[2,0],d_vec[2,0],f_vec[3,0],d_vec[3,0],f_vec[4,0],d_vec[4,0],
+                             -1*f_vec[1,0],-1*d_vec[1,0],-1*f_vec[2,0],-1*d_vec[2,0],-1*f_vec[3,0],-1*d_vec[3,0],-1*f_vec[4,0],-1*d_vec[4,0],
+                             0.5,0.25,0.05,
+                             0.5,0.25,0.05,
+                             0,0.1,0,0,0.2,
+                             0,0.1,0,0,0.2,
+                             0,0.4,0,0.4,0.9,
+                             10,'energy']
+    else:   
+        matargs=[f_vec[1,0],d_vec[1,0],f_vec[2,0],d_vec[2,0],f_vec[3,0],d_vec[3,0],f_vec[4,0],d_vec[4,0],
+                             -1*f_vec[1,0],-1*d_vec[1,0],-1*f_vec[2,0],-1*d_vec[2,0],-1*f_vec[3,0],-1*d_vec[3,0],-1*f_vec[4,0],-1*d_vec[4,0],
+                             0.5,0.25,0.05,
+                             0.5,0.25,0.05,
+                             0,0,0,0,0,
+                             0,0,0,0,0,
+                             0,0,0,0,0,
+                             10,'energy']
+    
+    ops.uniaxialMaterial('Pinching4', mat1Tag,*matargs)
+    ops.uniaxialMaterial('MinMax', mat2Tag, mat1Tag, '-min', -1*d_vec[4,0], '-max', d_vec[4,0])
+
 
 ### Function to perform relative squared error estimation for uncertainty quantification in regression
 def RSE(y_true, y_predicted):

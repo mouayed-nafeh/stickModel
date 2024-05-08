@@ -78,7 +78,6 @@ def create_csv_from_database(path_to_database, bldgClass, bldgOccupancy, region,
 
 def processSLFs(path_to_csv, bldgClass, bldgOccupancy, region, outDir):
     
-    
     ### Process drift-sensitive components
     path = f'{path_to_csv}'
     component_psd = pd.read_csv(path)
