@@ -1,0 +1,2 @@
+Building_class,Number_storeys,Storey_height,Type_of_period_func,Ty,T1,a_period_param,b_period_param,Participation_factor,Yield_drift,Ult_drift,Type_cap_curve,Yield_mult_factor,Ult_mult_factor,Ratio_capacity_last_line
+CR_LDUAL+CDH+DUH_H3,3,2.8,Poly,0.274008,0.137004,0.03262,0,1.4,0.0028,0.017,Trilinear,1.12,0.9,1.01
