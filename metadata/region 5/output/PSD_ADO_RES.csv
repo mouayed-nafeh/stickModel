@@ -1,5 +1,0 @@
-ITEM,ID,EDP,Component,Group,Quantity,Damage States,"DS1, Median Demand","DS2, Median Demand","DS3, Median Demand","DS4, Median Demand","DS5, Median Demand","DS1, Total Dispersion (Beta)","DS2, Total Dispersion (Beta)","DS3, Total Dispersion (Beta)","DS4, Total Dispersion (Beta)","DS5, Total Dispersion (Beta)","DS1, Repair COST","DS2, Repair COST","DS3, Repair COST","DS4, Repair COST","DS5, Repair COST","DS1, COST Dispersion (Beta)","DS2, COST Dispersion (Beta)","DS3, COST Dispersion (Beta)","DS4, COST Dispersion (Beta)","DS5, COST Dispersion (Beta)","DS1, best fit","DS2, best fit","DS3, best fit","DS4, best fit","DS5, best fit"
-1,Cladding - Windows & Glazing Area,PSD,NS,1,0.11095225877419736,2,0.0338,0.0383,,,,0.4,0.4,,,,102.75,205.5,,,,0.17,0.17,,,,,,,,
-2,Interior Partitions,PSD,NS,1,0.0,3,0.005,0.01,0.021,,,0.4,0.3,0.2,,,22.170240953879276,78.68261985592449,165.62474124368634,,,0.4814,0.5559,0.1959,,,,,,,
-3,Ceramic tile walls,PSD,NS,1,0.0,1,0.0021,,,,,0.6,,,,,3240.0,3240.0,,,,0.1542,,,,,,,,,
-4,Stairs,PSD,NS,1,0.0,3,0.005,0.017,0.028,,,0.6,0.6,0.45,,,280.0,1760.0,10940.0,,,0.8015,0.5694,0.3613,,,,,,,
