@@ -1,25 +1,27 @@
-
-### Import all dependencies for the entire library
+### Import libraries
 import pandas as pd
 import numpy as np
 import os
-import pip
 import re
-import matplotlib.pyplot as plt
 import time
 import pickle
 import math
 from math import sqrt, pi
 from scipy import stats, optimize, signal, integrate
 from scipy.interpolate import interp1d
-#import openseespy.opensees as ops
-from plotters import *
-import matplotlib.pyplot as plt
-import matplotlib.cbook as cbook
-import matplotlib.image as image
-from matplotlib.animation import FuncAnimation
+from scipy.linalg import eigh
+import openseespy.opensees as ops
 from itertools import count
 from postprocessors import *
+
+### Import plotting libraries
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import matplotlib.gridspec as gridspec
+from matplotlib.animation import FuncAnimation
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MultipleLocator
 
 ##########################################################################
 #                    GENERIC UTILITY FUNCTIONS                           #
@@ -185,6 +187,93 @@ def sorted_alphanumeric(data):
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(data, key=alphanum_key)
 
+
+def select_files(folder=".", start="", end="", contain="", include_path=False):
+    """
+    Function to select files inside a folder
+    -----
+    Input
+    -----
+    :param folder:           string                Folder name, by default current one
+    :param start:            string                Select the files that start with a given string 
+    :param end:              string                Select the files that end with a given string 
+    :param contain:          string                Select the files that contain a given string
+    
+    ------
+    Output
+    ------
+    Returns a list_names of files if more than one
+    """    
+    files = []
+    for file_name in os.listdir(folder):
+        if file_name.startswith(start):
+            if file_name.endswith(end):
+                if isinstance(contain, str):                    
+                    if file_name.find(contain) != -1:
+                        if include_path==True:
+                            files.append(os.path.join(folder, file_name))
+                        else:
+                            files.append(file_name)
+                else:
+                    for conts in contain:
+                        if file_name.find(conts) != -1:
+                            if include_path==True:
+                                files.append(os.path.join(folder, file_name))
+                            else:
+                                files.append(file_name)
+    if len(files) == 1:
+        return files[0]
+    else:
+        assert len(files) != 0, '\nNo files selected\n'
+        files.sort()
+        return files
+
+def processESMfile(in_filename, content, out_filename):
+    """
+    Processes acceleration history for ESM data file
+    (.asc format)
+    Parameters
+    ----------
+    in_filename : str, optional
+        Location and name of the input file.
+        The default is None
+    content : str, optional
+        Raw content of the .AT2 file.
+        The default is None
+    out_filename : str, optional
+        location and name of the output file.
+        The default is None.
+    Notes
+    -----
+    At least one of the two variables must be defined: in_filename, content.
+    Returns
+    -------
+    ndarray (n x 1)
+        time array, same length with npts.
+    ndarray (n x 1)
+        acceleration array, same length with time unit
+        usually in (g) unless stated otherwise.
+    str
+        Description of the earthquake (e.g., name, year, etc).
+    """
+    try:
+        # Read the file content from inFilename
+        if content is None:
+            with open(in_filename, 'r') as file:
+                content = file.readlines()
+        desc = content[:64]
+        dt = float(difflib.get_close_matches(
+            'SAMPLING_INTERVAL_S', content)[0].split()[1])
+        acc_data = content[64:]
+        acc = np.asarray([float(data) for data in acc_data], dtype=float)
+        dur = len(acc) * dt
+        t = np.arange(0, dur, dt)
+        acc = acc / 980.655  # cm/s**2 to g
+        if out_filename is not None:
+            np.savetxt(out_filename, acc, fmt='%1.4e')
+        return t, acc, desc
+    except BaseException as error:
+        print(f"Record file reader FAILED for {in_filename}: ", error)
 
 def processNGAfile(filepath, scalefactor=None):
     """
@@ -386,6 +475,31 @@ def get_capacity_values(df,build_class):
         say=(sdy*(2*np.pi/ty)**2)/9.81
 
         return sdy, say, sdu, ty
+
+def duplicate_for_drift(drifts,control_nodes):
+    """
+    Creates data to process box plots for peak storey drifts
+    -----
+    Input
+    -----
+    :param drifts:                  list          Peak Storey Drift Quantities
+    :param control_nodes:           list          Nodes of the MDOF oscillator
+
+    ------
+    Output
+    ------
+    x:                              list          Box plot-ready drift values
+    y:                              list          Box plot-ready control nodes values
+    """    
+
+    x = []; y = []
+    for i in range(len(control_nodes)-1):
+        y.extend((float(control_nodes[i]),float(control_nodes[i+1])))
+        x.extend((drifts[i],drifts[i]))
+    y.append(float(control_nodes[i+1]))
+    x.append(0.0)
+    
+    return x, y
 
 
 def aa_calc(frag_vul_array, hzd_array, rtP=1, max_rtP=5000):

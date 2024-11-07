@@ -243,112 +243,6 @@ class intensityMeasure():
 #                                                                        #
 ##########################################################################
 
-def do_cloud_analysis(imls,edps,damage_thresholds,censored_limit,min_edp,sigma_build2build=0.3):
-    """
-    Function to perform censored cloud analysis to a set of engineering demand parameters and intensity measure levels
-    Processes cloud analysis and fits linear regression after due consideration of collapse
-    -----
-    Input
-    -----
-    :param imls:                    list          Intensity measure levels 
-    :param edps:                    list          Engineering demand parameters (e.g., maximum interstorey drifts, maximum peak floor acceleration, top displacements, etc.)
-    :param damage_thresholds        list          EDP-based damage thresholds associated with slight, moderate, extensive and complete damage
-    :param censored_limit          float          Maximum EDP above which cloud records are filtered out (Typically equal to 1.5 times the ultimate capacity which is a proxy for collapse)
-    :param min_edp                 float          Minimum EDP below which cloud records are filtered out (Typically equal to 0.1 times the yield capacity which is a proxy for no-damage)
-    :param sigma_build2build       float          Building-to-building variability or modelling uncertainty (Default is set to 0.3)
-
-    ------
-    Output
-    ------
-    np.exp(x_vec):                   list         Intensities used to derive cloud analysis results and fragility functions
-    probability_damage_state_struct:array         Probabilities associated with the damage states given the ground-shaking intensities np.exp(x_vec) 
-    medians_struct:                  list         Median seismic intensities
-    betas_array_struct:              list         Associated dispersions (total dispersions accounting for modelling uncertainty and record-to-record variability)
-    
-    """    
-
-    # Convert to numpy array type
-    if isinstance(imls, np.ndarray):
-        pass
-    else:
-        imls = np.array(imls)
-    if isinstance(edps, np.ndarray):
-        pass
-    else:
-        edps = np.array(edps)
-
-    
-    imls=imls[edps>=min_edp]
-    edps=edps[edps>=min_edp]
-    
-    x_array=np.log(imls)
-    y_array=edps
-    
-    # checks if the y value is above the censored limit
-    bool_is_censored=y_array>=censored_limit
-    bool_is_not_censored=y_array<censored_limit
-    
-    # creates an array where all the censored values are set to the limit
-    observed=np.log((y_array*bool_is_not_censored)+(censored_limit*bool_is_censored))
-    
-    y_array=np.log(edps)
-    
-    def func(x):
-          p = np.array([stats.norm.pdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed))],dtype=float)
-          return -np.sum(np.log(p[p!= 0]))
-    sol1=optimize.fmin(func,[1,1,1],disp=False)
-    
-    def func2(x):
-          p1 = np.array([stats.norm.pdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed)) if bool_is_censored[i]==0],dtype=float)
-          
-          p2 = np.array([1-stats.norm.cdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed)) if bool_is_censored[i]==1],dtype=float)
-          return -np.sum(np.log(p1[p1 != 0]))-np.sum(np.log(p2[p2 != 0]))
-    
-    p_cens=optimize.fmin(func2,[sol1[0],sol1[1],sol1[2]],disp=False)
-    
-    beta_edp=np.array([p_cens[0],p_cens[1]])
-    
-    sigma_edp=math.sqrt(p_cens[2]**2+sigma_build2build**2)
-          
-    sse=np.empty([len(y_array),1])
-    ssto=np.empty([len(y_array),1])
-    for i in range(len(y_array)):
-        sse[i]=(y_array[i]-(p_cens[0]*x_array[i]+p_cens[1]))**2
-        ssto[i]=(y_array[i]-np.mean(y_array,dtype=float))**2
-    
-    r_square=np.ones(len(damage_thresholds))*(1-(np.sum(sse)/np.sum(ssto)))
-    
-    #x_vec=np.linspace(np.log(0.5*np.min(imls)),np.log(np.max(imls)*1.5),endpoint=True)
-    # x_vec=np.linspace(np.log(0.05),np.log(15),endpoint=True)
-    x_vec = np.round(np.geomspace(0.05, 10.0, 50), 3)                     # Intensity measure levels
-    x_vec = np.log(x_vec)
-    
-    probability_damage_state=np.zeros([len(x_vec),len(damage_thresholds)])
-    for i in range(len(x_vec)):
-          mu=p_cens[0]*x_vec[i]+p_cens[1]
-          for j in range(len(damage_thresholds)):
-                probability_damage_state[i][j]=1-(stats.norm.cdf(np.log(damage_thresholds[j]),loc=mu,scale=sigma_edp))
-    
-    ### Get the median intensities and dispersion values
-    b1=p_cens[0]
-    b0=p_cens[1]
-    sigma=p_cens[2]
-
-    medians_struct=np.zeros([len(damage_thresholds),1])
-    probability_damage_state_struct=np.zeros(probability_damage_state.shape)
-    beta=np.sqrt((sigma/b1)**2+sigma_build2build**2)
-
-    betas_array_struct = []
-    for ds in range(len(damage_thresholds)):
-
-       medians_struct[ds,0]=np.exp((np.log(damage_thresholds[ds])-b0)/b1)
-       probability_damage_state_struct[:,ds]=stats.norm.cdf(x_vec,loc=np.log(medians_struct[ds,0]),scale=beta)
-
-    betas_array_struct.append(np.sqrt((sigma/b1)**2+sigma_build2build**2))
-      
-    return np.exp(x_vec),probability_damage_state_struct,medians_struct, betas_array_struct, p_cens
-
-    
 def get_fragility_function(intensities, theta, beta_total):
     """
     Calculate the damage state lognormal CDF for a set of median seismic intensity and associated dispersion
@@ -367,6 +261,100 @@ def get_fragility_function(intensities, theta, beta_total):
     p = stats.lognorm.cdf(intensities, s=beta_total, loc=0, scale=theta)
         
     return p
+
+
+def do_cloud_analysis(imls,edps,damage_thresholds,lower_limit,censored_limit,sigma_build2build=0.3):
+
+    """
+    Function to perform censored cloud analysis to a set of engineering demand parameters and intensity measure levels
+    Processes cloud analysis and fits linear regression after due consideration of collapse
+    -----
+    Input
+    -----
+    imls:                    list          Intensity measure levels 
+    edps:                    list          Engineering demand parameters (e.g., maximum interstorey drifts, maximum peak floor acceleration, top displacements, etc.)
+    damage_thresholds        list          EDP-based damage thresholds associated with slight, moderate, extensive and complete damage
+    lower_limit             float          Minimum EDP below which cloud records are filtered out (Typically equal to 0.1 times the yield capacity which is a proxy for no-damage)
+    censored_limit          float          Maximum EDP above which cloud records are filtered out (Typically equal to 1.5 times the ultimate capacity which is a proxy for collapse)
+    sigma_build2build       float          Building-to-building variability or modelling uncertainty (Default is set to 0.3)
+
+    ------
+    Output
+    ------
+    cloud_dict:                     dict         Cloud analysis outputs (regression coefficients and data, fragility parameters and functions)
+    
+    """    
+
+    # Convert to numpy array type
+    if isinstance(imls, np.ndarray):
+        pass
+    else:
+        imls = np.array(imls)
+    if isinstance(edps, np.ndarray):
+        pass
+    else:
+        edps = np.array(edps)
+
+      
+    x_array=np.log(imls)
+    y_array=edps
+    
+    # remove displacements below lower limit
+    bool_y_lowdisp=edps>=lower_limit
+    x_array = x_array[bool_y_lowdisp]
+    y_array = y_array[bool_y_lowdisp]
+    
+    # checks if the y value is above the censored limit
+    bool_is_censored=y_array>=censored_limit
+    bool_is_not_censored=y_array<censored_limit
+    
+    # creates an array where all the censored values are set to the limit
+    observed=np.log((y_array*bool_is_not_censored)+(censored_limit*bool_is_censored))
+    
+    y_array=np.log(edps)
+    
+    def func(x):
+          p = np.array([stats.norm.pdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed))],dtype=float)
+          return -np.sum(np.log(p))
+    sol1=optimize.fmin(func,[1,1,1],disp=False)
+    
+    def func2(x):
+          p1 = np.array([stats.norm.pdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed)) if bool_is_censored[i]==0],dtype=float)
+          p2 = np.array([1-stats.norm.cdf(observed[i], loc=x[1]+x[0]*x_array[i], scale=x[2]) for i in range(len(observed)) if bool_is_censored[i]==1],dtype=float)
+          return -np.sum(np.log(p1[p1 != 0]))-np.sum(np.log(p2[p2 != 0]))
+    
+    p_cens=optimize.fmin(func2,[sol1[0],sol1[1],sol1[2]],disp=False)
+    
+    # reproduce the fit
+    xvec = np.linspace(np.log(min(imls)),np.log(max(imls)),endpoint=True)
+    yvec = p_cens[0]*xvec+p_cens[1]
+    
+    # calculate probabilities of exceedance
+    intensities = np.round(np.geomspace(0.05, 10.0, 50), 3) # sample the intensities
+    thetas = [np.exp((np.log(x)-p_cens[1])/p_cens[0]) for x in damage_thresholds] # calculate the median seismic intensities via the regression coefficients
+    betas = [np.sqrt((p_cens[2]/p_cens[0])**2+sigma_build2build**2)]*4            # calculate the total uncertainty accounting for the modelling uncertainty
+    poes = np.zeros((len(intensities),len(damage_thresholds)))                    # initialise and calculate the probabilities of exceedances associated with each damage state
+    for i in range((len(damage_thresholds))):
+        poes[:,i] = get_fragility_function(intensities, thetas[i], betas[i])
+
+    ## Package the outputs
+    cloud_dict =     {'imls': imls,                                              # Input intensity measure levels
+                      'edps': edps,                                              # Input engineering demand parameters
+                      'lower_limit': lower_limit,                                # Input lower censoring limit
+                      'upper_limit': censored_limit,                             # Input upper censoring limit
+                      'damage_thresholds': damage_thresholds,                    # Input damage thresholds
+                      'fitted_x': np.exp(xvec),                                  # fitted intensity measure range
+                      'fitted_y': np.exp(yvec),                                  # fitted edps 
+                      'intensities': intensities,                                # sampled intensities for fragility analysis
+                      'poes': poes,                                              # probabilities of exceedance of each damage state (DS1 to DSi)
+                      'medians': thetas,                                         # median seismic intensities (in g)
+                      'betas_total': betas,                                      # associated total dispersion (accounting for building-to-building and modelling uncertainties)
+                      'b1': p_cens[0],                                           # cloud analysis regression parameter (a in EDP = aIM^b)
+                      'b0': p_cens[1],                                           # cloud analysis regression parameter (b in EDP = aIM^b)
+                      'sigma': p_cens[2]}                                        # the standard error in the fitted regression
+                                                
+    return cloud_dict
+    
 
 def calculate_vulnerability(intensities,poes,consequenceModel):
     """

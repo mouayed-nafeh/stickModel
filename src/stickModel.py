@@ -3,123 +3,217 @@
 ##########################################################################   
 from utilities import *
 
-def calibrateModel(nst, sdofCapArray, T_sdof, isInfilled, isSOS, isWall):    
+def calibrateModel(nst, gamma, sdofCapArray, T_sdof, isFrame, isSOS):    
     """
-    Function to calibrate MDOF storey force-deformation relationships based on SDOF-based capacity functions
+    Function to calibrate MDOF storey force-deformation relationships
+    based on SDOF-based capacity functions
     -----
     Input
     -----
-    :param nst:               int                MDOF system number of storeys
-    :param sdofCapArray:    array                Array of SDOF spectral displacement and acceleration definition
-    :param T_sdof:          float                Fundamental period of the SDOF system
-    :param isInfilled:       bool                Boolean condition if building class is of the infilled class
-    :param isSOS:            bool                Boolean condition if building class is soft-storey
-    :param isWall:           bool                Boolean condition if building class uses walls as load-bearing
-
+    nst: float
+        Number of storeys
+    gamma: float
+        SDOF-MDOF transformation factor
+    sdofCapArray: array
+        SDOF spectral displacements-accelerations
+    T_sdof: float
+        Fundamental period of the SDOF system
+    isFrame: bool
+        Flag for building class or model containing moment resisting frames (True or False)
+    isSOS: bool
+        Flag for building class or model containing a soft-storey or not (True or False)
     ------
     Output
     ------
-    flm_mdof:                list                MDOF floor masses
-    stD_mdof:               array                MDOF storey displacements
-    stF_mdof:               array                MDOF storey forces
-    phi_mdof:                list                MDOF expected mode shape
-       
-    """
-    ## If the building is infilled and it is NOT soft storey
-    if (not isSOS and isInfilled) or isWall:
+    flm_mdof: list 
+        MDOF floor masses
+    stD_mdof: list
+        MDOF storey displacements
+    stF_mdof: list
+        MDOF storey forces
+    phi_mdof: list
+        MDOF expected mode shape
         
-        if nst <= 4:        
-            phi_mdof = np.zeros(nst)
-            for i in range(nst):
-                # These equations are based on empirical derivation of mode-shape vs number of storeys for infilled buildings with no soft-storey mechanism expected
-                phi_mdof[i] = -0.9845*((i+1)/nst)**2 + 1.9747*((i+1)/nst) + 0.0041
-            phi_mdof[-1] = 1.0
-        elif nst > 4:
-            phi_mdof = np.zeros(nst)
-            for i in range(nst):
-                # These equations are based on empirical derivation of mode-shape vs number of storeys for infilled buildings with no soft-storey mechanism expected
-                phi_mdof[i] = -0.7348*((i+1)/nst)**2 + 1.7267*((i+1)/nst) + 0.0011                
-            phi_mdof[-1] = 1.0 
+    """     
+        
+        
     # If the building has a soft storey
-    elif isSOS:
+    if isSOS:
     
-        if nst <= 4:
-            phi_mdof = np.zeros(nst)
-            for i in range(nst):
-                # Initialise the mode shape (based on Priestley et al. 2007)
-                phi_mdof[i] = -1.941*((i+1)/nst)**5 + 1.3378*((i+1)/nst)**4 + 5.8991*((i+1)/nst)**3 - 9.3336*((i+1)/nst)**2 + 5.0377*((i+1)/nst) + 0.000000008
-            phi_mdof[-1] = 1.0
-            
-        elif nst > 4:            
-            phi_mdof = np.zeros(nst)
-            for i in range(nst):
-                # Initialise the mode shape (based on Priestley et al. 2007)
-                phi_mdof[i] = 6.7777*((i+1)/nst)**5 - 22.025*((i+1)/nst)**4 + 27.485*((i+1)/nst)**3 - 16.666*((i+1)/nst)**2 + 5.4282*((i+1)/nst) + 0.0004
-            phi_mdof[-1] = 1.0                         
-
-    # For all other building typologies
-    else:
+        # Define the mass identity matrix (diagonal matrix that have 1). It assumes again that all masser are uniform
+        I = np.identity(nst)
         
-        if nst <= 4:
-            # Initialise the mode shape
-            phi_mdof = np.linspace(1/nst, 1, nst)
-        elif nst > 4:
-            phi_mdof = np.zeros(nst)            
-            for i in range(nst):
-                # Initialise the mode shape (based on Priestley et al. 2007)
-                phi_mdof[i] = 4/3*(i+1)/nst*(1 - (i+1)/4/nst)
-
+        if nst > 1:
+        
+            I[-1,-1] = 0.75    
+        
+        # Define the stiffnes tri-diagonal matrix, which considers the stiffness to be uniform accross all stories
+        ## Note: this may need to be changed later given that it does not apply to soft storeys
+        
+        # Initialize a zero matrix of size nst x nst
+        K = np.zeros((nst, nst))
+        
+        # Fill the diagonal with 2k for all floors except the first and last, which get k
+        np.fill_diagonal(K, 2)
+        
+        # For the last floors, the diagonal element is k, not 2k
+        K[-1, -1] = 1
+        
+        K[0,0] = 1.20
+        
     
-    # Calculate the sum of the squares of phi
-    sum_square_phi = np.dot(phi_mdof, phi_mdof)
-
-    # Calculate the sum of phi and then square it
-    sum_phi_square = np.power(np.sum(phi_mdof), 2)
+        # Fill the off-diagonal elements with -k (coupling between adjacent floors)
+        for i in range(nst - 1):
+            K[i, i + 1] = -1
+            K[i + 1, i] = -1
+        
+        
+        # Find mode shape based on the fact that stiffness and mass are uniform across floors
+        # Solving the generalized eigenvalue problem
+        # eigh solves K*x = lambda*M*x, it returns eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = eigh(K, I)
+        
+        # The first mode corresponds to the smallest (positive) eigenvalue
+        idx_min = np.argmin(eigenvalues)
+        
+        # Corresponding mode shape (eigenvector)
+        first_mode = eigenvectors[:, idx_min]
+        
+        # Normalize the mode shape (optional: to make sure it's unit norm)
+        phi_mdof = first_mode / first_mode[-1]
     
-    # Calculate the sum of mode shape
-    sum_phi = np.sum(phi_mdof)
     
-    # Calculate the mass at each floor node knowing the mode shape, effective mass (1 unit ton) and transformation factor
-    mass = sum_square_phi/sum_phi_square
+        # Calculate the sum of the squares of phi
+        sum_square_phi = np.dot(phi_mdof, phi_mdof)
     
-    # mass = 1/(sum_square_phi*gamma)
-    
-    # Real Value of Gamma because of the asssumed mode shape
-    gamma_real = sum_phi/sum_square_phi
+        # Calculate the sum of phi and then square it
+        sum_phi_square = np.power(np.sum(phi_mdof), 2)
+        
+        # Calculate the sum of mode shape
+        sum_phi = np.sum(phi_mdof)
+        
+        # Calculate the mass at each floor node knowing the mode shape, effective mass (1 unit ton) and transformation factor
+        mass = np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)/np.power(np.dot(np.dot(np.transpose(phi_mdof),I),np.ones(nst)),2)
+        
+        # mass = 1/(sum_square_phi*gamma)
+        
+        # Real Value of Gamma because of the asssumed mode shape
+        gamma_real = np.dot(np.dot(np.transpose(phi_mdof),I),np.ones(nst))/np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)
+                
+        # Assign the MDOF mass
+        
+        flm_mdof = (np.diagonal(I)*mass).tolist()
+        # flm_mdof = [mass]*nst
+        
+        # Compute Lambda as per Lu et al (pay attention as one of the papers has a mistake)
+        lamda = np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)/np.dot(np.dot(np.transpose(phi_mdof),K),phi_mdof)
+        
+    elif isFrame and nst <= 12:
+        
+        phi_mdof = np.zeros(nst)
+        
+        for i in range(nst):
             
-    # Assign the MDOF mass
-    flm_mdof = [mass]*nst
+            phi_mdof[i] = ((i+1)/nst)**0.6
+        
+        # Assign the MDOF mass
+        
+        I = np.identity(nst) 
+        
+        if nst > 1:
+        
+            I[-1,-1] = 0.75
+            
+        
+        #     # flm_mdof = [mass]*nst
+        
+        mass = np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)/np.power(np.dot(np.dot(np.transpose(phi_mdof),I),np.ones(nst)),2)
+        
+        # flm_mdof = [mass]*nst
+        
+        flm_mdof = (np.diagonal(I)*mass).tolist()
+        
+        gamma_real = np.dot(np.dot(np.transpose(phi_mdof),I),np.ones(nst))/np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)
+              
+
+
+    else:                         
+    
+        # Define the mass identity matrix (diagonal matrix that have 1). It assumes again that all masser are uniform
+        I = np.identity(nst)
+        
+        if nst > 1:
+        
+            I[-1,-1] = 0.75    
+        
+        # Define the stiffnes tri-diagonal matrix, which considers the stiffness to be uniform accross all stories
+        ## Note: this may need to be changed later given that it does not apply to soft storeys
+        
+        # Initialize a zero matrix of size nst x nst
+        K = np.zeros((nst, nst))
+        
+        # Fill the diagonal with 2k for all floors except the first and last, which get k
+        np.fill_diagonal(K, 2)
+        
+        # For the last floors, the diagonal element is k, not 2k
+        K[-1, -1] = 1
+    
+        # Fill the off-diagonal elements with -k (coupling between adjacent floors)
+        for i in range(nst - 1):
+            K[i, i + 1] = -1
+            K[i + 1, i] = -1
+        
+        
+        # Find mode shape based on the fact that stiffness and mass are uniform across floors
+        # Solving the generalized eigenvalue problem
+        # eigh solves K*x = lambda*M*x, it returns eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = eigh(K, I)
+        
+        # The first mode corresponds to the smallest (positive) eigenvalue
+        idx_min = np.argmin(eigenvalues)
+        
+        # Corresponding mode shape (eigenvector)
+        first_mode = eigenvectors[:, idx_min]
+        
+        # Normalize the mode shape (optional: to make sure it's unit norm)
+        phi_mdof = first_mode / first_mode[-1]
+    
+    
+        # Calculate the sum of the squares of phi
+        sum_square_phi = np.dot(phi_mdof, phi_mdof)
+    
+        # Calculate the sum of phi and then square it
+        sum_phi_square = np.power(np.sum(phi_mdof), 2)
+        
+        # Calculate the sum of mode shape
+        sum_phi = np.sum(phi_mdof)
+        
+        # Calculate the mass at each floor node knowing the mode shape, effective mass (1 unit ton) and transformation factor
+        mass = np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)/np.power(np.dot(np.dot(np.transpose(phi_mdof),I),np.ones(nst)),2)
+        
+        # mass = 1/(sum_square_phi*gamma)
+        
+        # Real Value of Gamma because of the asssumed mode shape
+        gamma_real = np.dot(np.dot(np.transpose(phi_mdof),I),np.ones(nst))/np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)
+                
+        # Assign the MDOF mass
+        
+        flm_mdof = (np.diagonal(I)*mass).tolist()
+
+        
+    if nst == 1:
+        
+        gamma = 1.0   
 
     ### Get the MDOF Capacity Curves Storey-Deformation Relationship
     rows, columns = np.shape(sdofCapArray)
     stD_mdof = np.zeros([nst,rows])
     stF_mdof = np.zeros([nst,rows])
-    
-    # Define the mass identity matrix (diagonal matrix that have 1). It assumes again that all masser are uniform
-    I = np.identity(nst)
-    
-    # Define the stiffnes tri-diagonal matrix, which considers the stiffness to be uniform accross all stories
-    ## Note: this may need to be changed later given that it does not apply to soft storeys
-    
-    # Initialize a zero matrix of size nst x nst
-    K = np.zeros((nst, nst))
-    
-    # Fill the diagonal with 2k for all floors except the first and last, which get k
-    np.fill_diagonal(K, 2)
-    
-    # For the last floors, the diagonal element is k, not 2k
-    K[-1, -1] = 1
 
-    # Fill the off-diagonal elements with -k (coupling between adjacent floors)
-    for i in range(nst - 1):
-        K[i, i + 1] = -1
-        K[i + 1, i] = -1
-    
-    # Compute Lambda as per Lu et al (pay attention as one of the papers has a mistake)
-    lamda = np.dot(np.dot(np.transpose(phi_mdof),I),phi_mdof)/np.dot(np.dot(np.transpose(phi_mdof),K),phi_mdof)
-    
+
+
     # Compute the interstorey initial stiffness (in kN/m)
-    k0 = lamda*4*pi**2*mass/T_sdof**2
+    # k0 = lamda*4*pi**2*mass/T_sdof**2
     
     if len(sdofCapArray) == 3: # In case of trilinear capacity curve
         
@@ -132,19 +226,11 @@ def calibrateModel(nst, sdofCapArray, T_sdof, isInfilled, isSOS, isWall):
                 # is different from the one in csv files. Technically, the multiplication outcome
                 # of the factors after sdofCapArray should be equal to 1.0, which is the effective
                 # mass of SDoF system
-                stF_mdof[i,:] = sdofCapArray[:,1]*gamma_real*np.sum(phi_mdof)*mass
+                stF_mdof[i,:] = sdofCapArray[:,1]*gamma*np.sum(phi_mdof)*mass
                 
                 # get the displacement or spectral displacement arrays at each storey
-                stD_mdof[i,:] = sdofCapArray[:,0]*gamma_real*phi_mdof[i]
-                
-                # # Fix the initial stiffness to get the same period as the SDoF system
-                # stD_mdof[i,0] = stF_mdof[i,0]/(k0/9.81)
-                # ## NOTE: the k0 is divided by 9.81 to maintain unit consistency because
-                # ## Moe multiplies all y-axis by g later in opensees
-                
-                # # Find the slope of the second branch of the capacity curve of first floor
-                # # to use it for predicting displacements of the other floors
-                # slope_2nd = (stF_mdof[0,1] - stF_mdof[0,0])/(stD_mdof[0,1] - stD_mdof[0,0])
+                stD_mdof[i,:] = sdofCapArray[:,0]*gamma*phi_mdof[i]
+                              
                 
             
             else:
@@ -172,13 +258,7 @@ def calibrateModel(nst, sdofCapArray, T_sdof, isInfilled, isSOS, isWall):
                 # Derive the displacements 
                 stD_mdof[i,:] = stD_mdof[0,:]*Ratio_disp
                 
-                # # Fix the initial stiffness to be the same as the first floor
-                # stD_mdof[i,0] = stF_mdof[i,0]/(k0/9.81)
-    
-                # # Find the displacement of the second branch
-                # stD_mdof[i,1] = stD_mdof[i,0] + (stF_mdof[i,1] - stF_mdof[i,0])/slope_2nd
-                
-                # The last displacement will stay the same
+
                 
                 # This is for the case that the ultimate displacement is less than
                 # the previous ones. I basically scale the previous displacements
@@ -202,11 +282,11 @@ def calibrateModel(nst, sdofCapArray, T_sdof, isInfilled, isSOS, isWall):
                 # is different from the one in csv files. Technically, the multiplication outcome
                 # of the factors after sdofCapArray should be equal to 1.0, which is the effective
                 # mass of SDoF system
-                stF_mdof[i,:] = sdofCapArray[:,1]*gamma_real*np.sum(phi_mdof)*mass
+                stF_mdof[i,:] = sdofCapArray[:,1]*gamma*np.sum(phi_mdof)*mass
                 
                 
                 # get the displacement or spectral displacement arrays at each storey
-                stD_mdof[i,:] = sdofCapArray[:,0]*gamma_real*phi_mdof[i]
+                stD_mdof[i,:] = sdofCapArray[:,0]*gamma*phi_mdof[i]
                 
                 # # Fix the initial stiffness to get the same period as the SDoF system
                 # stD_mdof[i,0] = stF_mdof[i,0]/(k0/9.81)
@@ -236,8 +316,6 @@ def calibrateModel(nst, sdofCapArray, T_sdof, isInfilled, isSOS, isWall):
                 # Derive the displacements 
                 stD_mdof[i,:] = stD_mdof[0,:]*Ratio_disp
                 
-                # # Fix the initial stiffness to be the same as the first floor
-                # stD_mdof[i,0] = stF_mdof[i,0]/(k0/9.81)
                 
                 # This is for the case that the ultimate displacement is less than
                 # the previous ones. I basically scale the previous displacements
@@ -260,26 +338,12 @@ def calibrateModel(nst, sdofCapArray, T_sdof, isInfilled, isSOS, isWall):
                 # is different from the one in csv files. Technically, the multiplication outcome
                 # of the factors after sdofCapArray should be equal to 1.0, which is the effective
                 # mass of SDoF system
-                stF_mdof[i,:] = sdofCapArray[:,1]*gamma_real*np.sum(phi_mdof)*mass
+                stF_mdof[i,:] = sdofCapArray[:,1]*gamma*np.sum(phi_mdof)*mass
                 
                 
                 # get the displacement or spectral displacement arrays at each storey
-                stD_mdof[i,:] = sdofCapArray[:,0]*gamma_real*phi_mdof[i]
-                
-                # # Fix the initial stiffness to get the same period as the SDoF system
-                # stD_mdof[i,0] = stF_mdof[i,0]/(k0/9.81)
-                # ## NOTE: the k0 is divided by 9.81 to maintain unit consistency because
-                # ## Moe multiplies all y-axis by g later in opensees
-                
-                # # Find the slope of the second branch of the capacity curve of first floor
-                # # to use it for predicting displacements of the other floors
-                # slope_2nd = (stF_mdof[0,1] - stF_mdof[0,0])/(stD_mdof[0,1] - stD_mdof[0,0])
-                
-                # # Find the slope of the third branch of the capacity curve of first floor
-                # # to use it for predicting displacements of the other floors
-                # slope_3rd = (stF_mdof[0,2] - stF_mdof[0,1])/(stD_mdof[0,2] - stD_mdof[0,1])
-               
-                
+                stD_mdof[i,:] = sdofCapArray[:,0]*gamma*phi_mdof[i]
+                               
             
             else:
                 
@@ -306,17 +370,6 @@ def calibrateModel(nst, sdofCapArray, T_sdof, isInfilled, isSOS, isWall):
                 # Derive the displacements 
                 stD_mdof[i,:] = stD_mdof[0,:]*Ratio_disp
                 
-                # # Fix the initial stiffness to be the same as the first floor
-                # stD_mdof[i,0] = stF_mdof[i,0]/(k0/9.81)
-    
-                # # Find the displacement of the second branch
-                # stD_mdof[i,1] = stD_mdof[i,0] + (stF_mdof[i,1] - stF_mdof[i,0])/slope_2nd
-               
-                # # Find the displacement of the third branch
-                # stD_mdof[i,2] = stD_mdof[i,1] + (stF_mdof[i,2] - stF_mdof[i,1])/slope_3rd
-                
-                # # The last displacement will stay the same 
-
 
                 # This is for the case that the ultimate displacement is less than
                 # the previous ones. I basically scale the previous displacements
@@ -1133,6 +1186,8 @@ class stickModel():
         -------
         control_nodes:                 list                List of MDOF system floor nodes
         conv_index:                    list                List containing whether or not analysis has converged (collapse index)
+        node_disps:                   array                Nodal displacements
+        node_accels:                  array                Nodal accelerations
         peak_drift:                   array                Peak storey drift values (i.e., all storeys per record)
         peak_accel:                   array                Peak floor acceleration values (i.e., all floors per record)
         max_peak_drift:               array                Maximum peak storey drift values (i.e., maximum of all storeys per record)
@@ -1203,14 +1258,20 @@ class stickModel():
         # Set damping 
         alphaM = 2*self.omega[0]*xi
         ops.rayleigh(alphaM,0,0,0)
-                
+        
+        # Define parameters for deformation animation
+        n_steps = int(t_max/dt_gm)
+        node_disps = np.zeros([n_steps+1,len(control_nodes)])
+        node_accels= np.zeros([n_steps+1,len(control_nodes)])
+        
         # Run the actual analysis
+        step = 0 # initialise the step counter
         while conv_index == 0 and control_time <= t_max and ok == 0:
             ok = ops.analyze(1, dt_ansys)
             control_time = ops.getTime()
             
-            # if pflag is True:
-            #     print('Completed {:.3f}'.format(control_time) + ' of {:.3f} seconds'.format(t_max) )
+            if pflag is True:
+                print('Completed {:.3f}'.format(control_time) + ' of {:.3f} seconds'.format(t_max) )
         
             # If the analysis fails, try the following changes to achieve convergence
             if ok != 0:
@@ -1265,8 +1326,13 @@ class stickModel():
                     
             # For each node to monitor, get is absolute displacement
             for i in np.arange(len(control_nodes)):
+                
                 curr_disp_X = np.abs(ops.nodeDisp(control_nodes[i], 1))
                 curr_disp_Y = np.abs(ops.nodeDisp(control_nodes[i], 2))
+                
+                # Append the node displacements and accelerations (NOTE: Might change when bidirectional records are applied)
+                node_disps[step,i]  = ops.nodeDisp(control_nodes[i],1)
+                node_accels[step,i] = ops.nodeResponse(control_nodes[i],1, 3)
                 
                 # Check if the current drift is greater than the previous peaks at the same storey
                 if curr_disp_X > peak_disp[i, 0]:
@@ -1274,6 +1340,9 @@ class stickModel():
                 
                 if curr_disp_Y > peak_disp[i, 1]:
                     peak_disp[i, 1] = curr_disp_Y
+            
+            # Increment the step
+            step +=1
                                     
         # Now that the analysis is finished, get the maximum in either direction and report the location also
         max_peak_drift = np.max(peak_drift)
@@ -1321,4 +1390,4 @@ class stickModel():
             print('Maximum peak floor acceleration {:.3f} g at floor {:d} in the {:s} direction (Floors = 0(G), 1, 2, 3,...)'.format(max_peak_accel, max_peak_accel_loc, max_peak_accel_dir))
                    
         # Give the outputs
-        return control_nodes, conv_index, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp
+        return control_nodes, conv_index, node_disps, node_accels, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp
