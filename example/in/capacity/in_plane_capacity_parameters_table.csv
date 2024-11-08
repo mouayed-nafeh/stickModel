@@ -1,0 +1,2 @@
+Building_class,Number_storeys,Storey_height,Type_of_period_func,Ty,T1,a_period_param,b_period_param,Participation_factor,Real_participation_factor,Yield_drift,Ult_drift,Type_cap_curve,Yield_mult_factor,Ult_mult_factor,Ratio_capacity_last_line
+EU_LWAL+DNO_H3,3,2.6,Power,0.450614894,0.225307447,0.06402,0.95,1.33,1.168068444,0.0007,0.0055,Trilinear,1,0.83,1.01
