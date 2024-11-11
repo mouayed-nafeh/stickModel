@@ -51,6 +51,6 @@ By default, you will see the files in the repository in the `main` branch. Each 
 
 Note that the `main` branch could contain the work-in-progress of the next version of the model.
 
-# References
+# 📑 References
 [^1]: Nafeh, A.M.B., Al-Jawhari, K., Silva, V, (202X). Title Pending. Journal
 [^2]: Nafeh, A.M.B., Al-Jawhari, K., Silva, V, (202X). Title Pending. COMPDYN
