@@ -1,7 +1,5 @@
 # Vulnerability-Toolkit
 
-![logo](https://github.com/mouayed-nafeh/random/assets/149155077/024e652c-8bc3-41c1-b2fc-0ae1e9f5816a)
-
 ![logo](https://github.com/mouayed-nafeh/vulnerability-toolkit/blob/main/imgs/gem-vulnerability-toolkit.png)
 
 ## 🔎 Overview 
