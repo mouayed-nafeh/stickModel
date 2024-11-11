@@ -19,7 +19,7 @@ DOI: TBD
 * Vulnerability analysis: Perform fragility function convolution with with consequence models  for structural, and building contents and region-specific non-structural storey-loss functions;
 * Plotting: Plot analysis outputs such as model overview, cloud analysis results, demand profiles (i.e., peak storey drifts and peak floor acceleration along the height of the model), fragility functions. Additionally, it is possible to animate the MDoF considering a single run;
 
-## Documentation
+## 📚 Documentation
 
 TBD
 
@@ -27,7 +27,7 @@ TBD
 
 Contributors are gratefully acknowledged and listed in CONTRIBUTORS.txt. 
 
-# License
+# © License
 [![CC BY-NC-SA 4.0][cc-by-nc-sa-shield]][cc-by-nc-sa]
 
 This work is licensed under a
