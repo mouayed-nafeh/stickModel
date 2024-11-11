@@ -1,6 +1,16 @@
 # Vulnerability-Toolkit
 
-![logo](https://github.com/mouayed-nafeh/random/assets/149155077/024e652c-8bc3-41c1-b2fc-0ae1e9f5816a)
+<div align='left'>
+<p align="left">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Global_Earthquake_Model_Logo.png/440px-Global_Earthquake_Model_Logo.png" alt="GEM Foundation" width="300"/>
+</p>
+
+<div align='right'>
+<p align="right">
+    <img src="https://github.com/mouayed-nafeh/random/assets/149155077/024e652c-8bc3-41c1-b2fc-0ae1e9f5816a" alt="GEM Foundation" width="300"/>
+</p>
+
+  ![logo](https://github.com/mouayed-nafeh/random/assets/149155077/024e652c-8bc3-41c1-b2fc-0ae1e9f5816a)
 
 ## 🔎 Overview 
 
