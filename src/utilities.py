@@ -9,19 +9,7 @@ import math
 from math import sqrt, pi
 from scipy import stats, optimize, signal, integrate
 from scipy.interpolate import interp1d
-from scipy.linalg import eigh
-import openseespy.opensees as ops
 from itertools import count
-from postprocessors import *
-
-### Import plotting libraries
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import matplotlib.gridspec as gridspec
-from matplotlib.animation import FuncAnimation
-from matplotlib.ticker import FormatStrFormatter
-from matplotlib.lines import Line2D
-from matplotlib.ticker import MultipleLocator
 
 ##########################################################################
 #                    GENERIC UTILITY FUNCTIONS                           #
