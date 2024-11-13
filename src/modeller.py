@@ -868,9 +868,9 @@ class modeller():
         ops.rayleigh(alphaM,0,0,0)
         
         # Define parameters for deformation animation
-        n_steps = int(t_max/dt_gm)
-        node_disps = np.zeros([n_steps+1,len(control_nodes)])
-        node_accels= np.zeros([n_steps+1,len(control_nodes)])
+        n_steps = int(np.ceil(t_max/dt_gm))+1
+        node_disps = np.zeros([n_steps,len(control_nodes)])
+        node_accels= np.zeros([n_steps,len(control_nodes)])
         
         # Run the actual analysis
         step = 0 # initialise the step counter
@@ -996,6 +996,6 @@ class modeller():
             print('Final state = {:d} (-1 for non-converged, 0 for stable)'.format(conv_index))
             print('Maximum peak storey drift {:.3f} radians at storey {:d} in the {:s} direction (Storeys = 1, 2, 3,...)'.format(max_peak_drift, max_peak_drift_loc, max_peak_drift_dir))
             print('Maximum peak floor acceleration {:.3f} g at floor {:d} in the {:s} direction (Floors = 0(G), 1, 2, 3,...)'.format(max_peak_accel, max_peak_accel_loc, max_peak_accel_dir))
-                   
+                
         # Give the outputs
         return control_nodes, conv_index, node_disps, node_accels, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp

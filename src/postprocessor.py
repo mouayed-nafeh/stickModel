@@ -131,7 +131,6 @@ class postprocessor():
         poes = stats.lognorm.cdf(intensities, s=beta_total, loc=0, scale=theta)            
         return poes
 
-
         
     def get_vulnerability_function(self,
                                    poes,

@@ -84,6 +84,9 @@ class plotter():
         plt.xscale('log')
         plt.yscale('log')
         
+        plt.xlim([min(cloud_dict['imls']), max(cloud_dict['imls'])])
+        plt.ylim([min(cloud_dict['edps']), max(cloud_dict['edps'])])
+        
         plt.legend()
         plt.savefig(f'{output_directory}/{plot_label}.png', dpi=RESOLUTION, format='png')
         plt.show()

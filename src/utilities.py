@@ -14,6 +14,22 @@ from itertools import count
 ##########################################################################
 #                    GENERIC UTILITY FUNCTIONS                           #
 ##########################################################################
+def fun_lognormal(x, sigma, mu):
+    """
+    Function to reproduce or fit a Lognormal function to data
+    -----
+    Input
+    -----
+    :param x:                list                x-axis data
+    :param sigma:           float                fitting coefficient
+    :param mu:              float                fitting coefficient
+
+    ------
+    Output
+    ------
+    Data following Lognormal distribution
+    """    
+    return stats.norm.cdf(np.log(x), loc=np.log(mu), scale=sigma)
 
 def fun_weibull(x, a, b, c):
     """
