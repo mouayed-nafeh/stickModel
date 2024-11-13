@@ -868,12 +868,12 @@ class modeller():
         ops.rayleigh(alphaM,0,0,0)
         
         # Define parameters for deformation animation
-        n_steps = int(np.ceil(t_max/dt_gm))+1
-        node_disps = np.zeros([n_steps,len(control_nodes)])
-        node_accels= np.zeros([n_steps,len(control_nodes)])
+        # n_steps = int(np.ceil(t_max/dt_gm))+1
+        # node_disps = np.zeros([n_steps,len(control_nodes)])
+        # node_accels= np.zeros([n_steps,len(control_nodes)])
         
         # Run the actual analysis
-        step = 0 # initialise the step counter
+        # step = 0 # initialise the step counter
         while conv_index == 0 and control_time <= t_max and ok == 0:
             ok = ops.analyze(1, dt_ansys)
             control_time = ops.getTime()
@@ -938,9 +938,9 @@ class modeller():
                 curr_disp_X = np.abs(ops.nodeDisp(control_nodes[i], 1))
                 curr_disp_Y = np.abs(ops.nodeDisp(control_nodes[i], 2))
                 
-                # Append the node displacements and accelerations (NOTE: Might change when bidirectional records are applied)
-                node_disps[step,i]  = ops.nodeDisp(control_nodes[i],1)
-                node_accels[step,i] = ops.nodeResponse(control_nodes[i],1, 3)
+                # # Append the node displacements and accelerations (NOTE: Might change when bidirectional records are applied)
+                # node_disps[step,i]  = ops.nodeDisp(control_nodes[i],1)
+                # node_accels[step,i] = ops.nodeResponse(control_nodes[i],1, 3)
                 
                 # Check if the current drift is greater than the previous peaks at the same storey
                 if curr_disp_X > peak_disp[i, 0]:
@@ -948,10 +948,7 @@ class modeller():
                 
                 if curr_disp_Y > peak_disp[i, 1]:
                     peak_disp[i, 1] = curr_disp_Y
-            
-            # Increment the step
-            step +=1
-                                    
+                                                
         # Now that the analysis is finished, get the maximum in either direction and report the location also
         max_peak_drift = np.max(peak_drift)
         ind = np.where(peak_drift == max_peak_drift)
@@ -998,4 +995,4 @@ class modeller():
             print('Maximum peak floor acceleration {:.3f} g at floor {:d} in the {:s} direction (Floors = 0(G), 1, 2, 3,...)'.format(max_peak_accel, max_peak_accel_loc, max_peak_accel_dir))
                 
         # Give the outputs
-        return control_nodes, conv_index, node_disps, node_accels, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp
+        return control_nodes, conv_index, peak_drift, peak_accel, max_peak_drift, max_peak_drift_dir, max_peak_drift_loc, max_peak_accel, max_peak_accel_dir, max_peak_accel_loc, peak_disp
