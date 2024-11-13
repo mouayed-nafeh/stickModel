@@ -1,9 +1,14 @@
-script_dir = '/Users/mnafeh/Documents/GitHub/stickModel/src'
 import sys
 import unittest
 import os
 
-sys.path.insert(1, script_dir)
+# set paths
+github_path = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                       '..'))
+sys.path.append(github_path)
+os.chdir(os.path.join(github_path, 'src'))
+
+# import the class to test
 from postprocessor import *
 
 
